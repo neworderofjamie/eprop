@@ -79,23 +79,25 @@ IMPLEMENT_MODEL(Input);
 class OutputRegression : public NeuronModels::Base
 {
 public:
-    DECLARE_MODEL(OutputRegression, 5, 9);
+    DECLARE_MODEL(OutputRegression, 6, 9);
 
     SET_SIM_CODE(
         "$(Y) = ($(Kappa) * $(Y)) + $(Isyn) + $(Bias);\n"
-        "$(Ystar) = $(Ampl1) * sin(($(Freq1Radians) * $(t)) + $(Phase1));\n"
-        "$(Ystar) += $(Ampl2) * sin(($(Freq2Radians) * $(t)) + $(Phase2));\n"
-        "$(Ystar) += $(Ampl3) * sin(($(Freq3Radians) * $(t)) + $(Phase3));\n"
-        "$(E) = $(Y) - $(Ystar);\n");
+        "const scalar tPattern = fmod($(t), $(PatternLength));\n"
+        "$(YStar) = $(Ampl1) * sin(($(Freq1Radians) * tPattern) + $(Phase1));\n"
+        "$(YStar) += $(Ampl2) * sin(($(Freq2Radians) * tPattern) + $(Phase2));\n"
+        "$(YStar) += $(Ampl3) * sin(($(Freq3Radians) * tPattern) + $(Phase3));\n"
+        "$(E) = $(Y) - $(YStar);\n");
 
     SET_PARAM_NAMES({
-        "TauOut",       // Membrane time constant [ms]
-        "Bias",         // Bias [mV]
-        "Freq1",        // Frequency of sine wave 1 (Hz)
-        "Freq2",        // Frequency of sine wave 2 (Hz)
-        "Freq3"});      // Frequency of sine wave 3 (Hz)
+        "TauOut",           // Membrane time constant [ms]
+        "Bias",             // Bias [mV]
+        "Freq1",            // Frequency of sine wave 1 [Hz]
+        "Freq2",            // Frequency of sine wave 2 [Hz]
+        "Freq3",            // Frequency of sine wave 3 [Hz]
+        "PatternLength"});  // Pattern length [ms]
 
-    SET_VARS({{"Y", "scalar"}, {"Ystar", "scalar"}, {"E", "scalar"},
+    SET_VARS({{"Y", "scalar"}, {"YStar", "scalar"}, {"E", "scalar"},
               {"Ampl1", "scalar", VarAccess::READ_ONLY}, {"Ampl2", "scalar", VarAccess::READ_ONLY}, {"Ampl3", "scalar", VarAccess::READ_ONLY},
               {"Phase1", "scalar", VarAccess::READ_ONLY}, {"Phase2", "scalar", VarAccess::READ_ONLY}, {"Phase3", "scalar", VarAccess::READ_ONLY}});
 
@@ -120,11 +122,12 @@ void modelDefinition(ModelSpec &model)
     // Parameters and state variables
     //---------------------------------------------------------------------------
     OutputRegression::ParamValues outputParamVals(
-        20.0,   // Membrane time constant [ms]
-        0.0,    // Bias [mV]
-        2.0,    // Frequency of sine wave 1 (Hz)
-        3.0,    // Frequency of sine wave 2 (Hz)
-        5.0);  // Frequency of sine wave 3 (Hz)
+        20.0,       // Membrane time constant [ms]
+        0.0,        // Bias [mV]
+        2.0,        // Frequency of sine wave 1 [Hz]
+        3.0,        // Frequency of sine wave 2 [Hz]
+        5.0,        // Frequency of sine wave 3 [Hz]
+        1000.0);    // Pattern length [ms]
     
     InitVarSnippet::Uniform::ParamValues outputAmplDist(0.5, 2.0);
     InitVarSnippet::Uniform::ParamValues outputPhaseDist(0.0, 2.0 * PI);
