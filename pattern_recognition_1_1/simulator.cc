@@ -11,6 +11,7 @@ int main()
     initializeSparse();
     
     SpikeRecorder<SpikeWriterTextCached> inputSpikeRecorder(&getInputCurrentSpikes, &getInputCurrentSpikeCount, "input_spikes.csv", ",", true);
+    SpikeRecorder<SpikeWriterTextCached> recurrentSpikeRecorder(&getRecurrentCurrentSpikes, &getRecurrentCurrentSpikeCount, "recurrent_spikes.csv", ",", true);
     
     AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, 3, ",");
 
@@ -19,11 +20,13 @@ int main()
         
         // Download state
         pullInputCurrentSpikesFromDevice();
+        pullRecurrentCurrentSpikesFromDevice();
         pullYOutputFromDevice();
         pullYStarOutputFromDevice();
         
         // Record
         inputSpikeRecorder.record(t);
+        recurrentSpikeRecorder.record(t);
         outputRecorder.record(t);
     }
 }

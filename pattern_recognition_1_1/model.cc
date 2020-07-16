@@ -126,6 +126,15 @@ IMPLEMENT_MODEL(OutputRegression);
 
 void modelDefinition(ModelSpec &model)
 {
+    // Calculate weight scaling factor
+    // **NOTE** "Long short-term memory and 
+    // learning-to-learn in networks of spiking neurons"
+    // suggests that this should be (1 Volt * DT)/Rm but
+    // that results in 1E-9 or something which is never 
+    // going to make these neurons spike - the paper then 
+    // SORT OF suggests that they use 1.0
+    const double weight0 = 1.0;
+  
     model.setDT(1.0);
     model.setName("pattern_recognition_1_1");
 
@@ -139,10 +148,22 @@ void modelDefinition(ModelSpec &model)
         200.0,      // How long each group is active for [ms]
         100.0,      // Rate active neurons fire at [Hz]
         1000.0);    // Pattern length [ms]
-    
+
     Input::VarValues inputInitVals(
         0.0,    // Trace
         0.0);   // Refrac time
+
+    // Recurrent population
+    Recurrent::ParamValues recurrentParamVals(
+        20.0,   // Membrane time constant [ms]
+        0.61,   // Spiking threshold [mV]
+        5.0);   // Refractory time constant [ms]
+
+    Recurrent::VarValues recurrentInitVals(
+        0.0,    // V
+        0.0,    // Psi
+        0.0,    // RefracTime
+        0.0);   // Trace
     
     // Output population
     OutputRegression::ParamValues outputParamVals(
@@ -166,9 +187,46 @@ void modelDefinition(ModelSpec &model)
         initVar<InitVarSnippet::Uniform>(outputPhaseDist),  // Phase2
         initVar<InitVarSnippet::Uniform>(outputPhaseDist)); // Phase3
     
+    // Feedforward input->recurrent connections
+    InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(20.0));
+    WeightUpdateModels::StaticPulse::VarValues inputRecurrentInitVals(
+        initVar<InitVarSnippet::Normal>(inputRecurrentWeightDist));
+    
+    // Recurrent connections
+    InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(600.0));
+    WeightUpdateModels::StaticPulse::VarValues recurrentRecurrentInitVals(
+        initVar<InitVarSnippet::Normal>(recurrentRecurrentWeightDist));
+        
+    // Feedforward recurrent->output connections
+    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(600.0));
+    WeightUpdateModels::StaticPulse::VarValues recurrentOutputInitVals(
+        initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist));
+    
     //---------------------------------------------------------------------------
     // Neuron populations
     //---------------------------------------------------------------------------
     model.addNeuronPopulation<Input>("Input", 20, inputParamVals, inputInitVals);
+    model.addNeuronPopulation<Recurrent>("Recurrent", 600, recurrentParamVals, recurrentInitVals);
     model.addNeuronPopulation<OutputRegression>("Output", 3, outputParamVals, outputInitVals);
+    
+    //---------------------------------------------------------------------------
+    // Synapse populations
+    //---------------------------------------------------------------------------
+    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+        "InputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
+        "Input", "Recurrent",
+        {}, inputRecurrentInitVals,
+        {}, {});
+
+    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+        "RecurrentRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
+        "Recurrent", "Recurrent",
+        {}, recurrentRecurrentInitVals,
+        {}, {});
+
+    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+        "RecurrentOutput", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
+        "Recurrent", "Output",
+        {}, recurrentOutputInitVals,
+        {}, {});
 }
