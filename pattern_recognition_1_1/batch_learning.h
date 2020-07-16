@@ -6,7 +6,7 @@
 namespace BatchLearning
 {
 //! Calculate transpose of matrix using CUDA
-void transposeCUDA(const float *d_in, float *d_out, 
+void transposeCUDA(float *d_in, float *d_out, 
                    unsigned int numInRows, unsigned int numInCols);
 
 //! Apply fixed rate learning to dense weights

@@ -61,11 +61,11 @@ recurrent_spikes["neuron_id"] = np.digitize(recurrent_spikes["neuron_id"], subse
 figure, axes = plt.subplots(5, 6, sharex="col")
 
 plot_timeslice(input_spikes, recurrent_spikes, output_data, 0, axes[:,0])
-plot_timeslice(input_spikes, recurrent_spikes, output_data, 100, axes[:,1])
-plot_timeslice(input_spikes, recurrent_spikes, output_data, 200, axes[:,2])
-plot_timeslice(input_spikes, recurrent_spikes, output_data, 300, axes[:,3])
-plot_timeslice(input_spikes, recurrent_spikes, output_data, 400, axes[:,4])
-plot_timeslice(input_spikes, recurrent_spikes, output_data, 500, axes[:,5])
+plot_timeslice(input_spikes, recurrent_spikes, output_data, 200, axes[:,1])
+plot_timeslice(input_spikes, recurrent_spikes, output_data, 400, axes[:,2])
+plot_timeslice(input_spikes, recurrent_spikes, output_data, 600, axes[:,3])
+plot_timeslice(input_spikes, recurrent_spikes, output_data, 800, axes[:,4])
+plot_timeslice(input_spikes, recurrent_spikes, output_data, 1000, axes[:,5])
 
 # Show plot
 #figure.tight_layout(pad=0)
