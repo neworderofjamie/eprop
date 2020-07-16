@@ -4,47 +4,18 @@
 
 constexpr double PI = 3.14159265358979323846264338327950288419;
 
-//---------------------------------------------------------------------------
-// Continuous
-//---------------------------------------------------------------------------
-//! Simple continous synapse for error feedback
-class Continuous : public WeightUpdateModels::Base
-{
-public:
-    DECLARE_MODEL(Continuous, 0, 1);
-
-    SET_VARS({{"g", "scalar"}});
-
-    SET_SYNAPSE_DYNAMICS_CODE("$(addToInSyn, $(g) * $(E_pre));\n");
-};
-IMPLEMENT_MODEL(Continuous);
-
-//---------------------------------------------------------------------------
-// Feedback
-//---------------------------------------------------------------------------
-//! Simple postsynaptic model which transfer input directly to neuron without any dynamics
-class Feedback : public PostsynapticModels::Base
-{
-public:
-    DECLARE_MODEL(Feedback, 0, 0);
-
-    SET_APPLY_INPUT_CODE(
-        "$(IsynFeedback) += $(inSyn);\n"
-        "$(inSyn) = 0;\n");
-};
-IMPLEMENT_MODEL(Feedback);
-
 //----------------------------------------------------------------------------
 // Recurrent
 //----------------------------------------------------------------------------
 class Recurrent : public NeuronModels::Base
 {
 public:
-    DECLARE_MODEL(Recurrent, 3, 4);
+    DECLARE_MODEL(Recurrent, 3, 5);
 
     SET_SIM_CODE(
+        "$(E) = $(IsynFeedback);\n"
         "$(V) = ($(Alpha) * $(V)) + $(Isyn);\n"
-        "$(Trace) *= $(Alpha);\n"
+        "$(ZFilter) *= $(Alpha);\n"
         "if ($(RefracTime) > 0.0) {\n"
         "  $(RefracTime) -= DT;\n"
         "  $(Psi) = 0.0;\n"
@@ -57,7 +28,7 @@ public:
 
     SET_RESET_CODE(
         "$(RefracTime) = $(TauRefrac);\n"
-        "$(Trace) += 1.0f;\n"
+        "$(ZFilter) += 1.0f;\n"
         "$(V) -= $(Vthresh);\n");
 
     SET_PARAM_NAMES({
@@ -65,7 +36,8 @@ public:
         "Vthresh",      // Spiking threshold [mV]
         "TauRefrac"});  // Refractory time constant [ms]
 
-    SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, {"Trace", "scalar"}});
+    SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, 
+              {"ZFilter", "scalar"}, {"E", "scalar"}});
 
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
@@ -89,7 +61,7 @@ public:
         "const unsigned int neuronGroup = $(id) / (unsigned int)$(GroupSize);\n"
         "const scalar groupStartTime = neuronGroup * $(ActiveInterval);\n"
         "const scalar groupEndTime = groupStartTime + $(ActiveInterval);\n"
-        "$(Trace) *= $(Alpha);\n"
+        "$(ZFilter) *= $(Alpha);\n"
         "if ($(RefracTime) > 0.0) {\n"
         "  $(RefracTime) -= DT;\n"
         "}\n");
@@ -99,7 +71,7 @@ public:
 
     SET_RESET_CODE(
         "$(RefracTime) = $(TauRefrac);\n"
-        "$(Trace) += 1.0;\n");
+        "$(ZFilter) += 1.0;\n");
 
     SET_PARAM_NAMES({
         "TauIn",            // Membrane time constant [ms]
@@ -108,7 +80,7 @@ public:
         "ActiveRate",       // Rate active neurons fire at [Hz]
         "PatternLength"});  // Pattern length [ms]
         
-    SET_VARS({{"Trace", "scalar"}, {"RefracTime", "scalar"}});
+    SET_VARS({{"ZFilter", "scalar"}, {"RefracTime", "scalar"}});
    
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
@@ -156,6 +128,63 @@ public:
 };
 IMPLEMENT_MODEL(OutputRegression);
 
+//---------------------------------------------------------------------------
+// Feedback
+//---------------------------------------------------------------------------
+//! Simple postsynaptic model which transfer input directly to neuron without any dynamics
+class Feedback : public PostsynapticModels::Base
+{
+public:
+    DECLARE_MODEL(Feedback, 0, 0);
+
+    SET_APPLY_INPUT_CODE(
+        "$(IsynFeedback) += $(inSyn);\n"
+        "$(inSyn) = 0;\n");
+};
+IMPLEMENT_MODEL(Feedback);
+
+//---------------------------------------------------------------------------
+// Continuous
+//---------------------------------------------------------------------------
+//! Simple continous synapse for error feedback
+class Continuous : public WeightUpdateModels::Base
+{
+public:
+    DECLARE_MODEL(Continuous, 0, 1);
+
+    SET_VARS({{"g", "scalar"}});
+
+    SET_SYNAPSE_DYNAMICS_CODE("$(addToInSyn, $(g) * $(E_pre));\n");
+};
+IMPLEMENT_MODEL(Continuous);
+
+//---------------------------------------------------------------------------
+// EProp
+//---------------------------------------------------------------------------
+//! Basic implementation of EProp learning rule
+class EProp : public WeightUpdateModels::Base
+{
+public:
+    DECLARE_MODEL(EProp, 1, 3);
+    
+    SET_SIM_CODE("$(addToInSyn, $(g));\n");
+    
+    SET_SYNAPSE_DYNAMICS_CODE(
+        "const scalar e = $(ZFilter_pre) * $(Psi_post);\n"
+        "scalar eFiltered = $(eFiltered);\n"
+        "eFiltered = (eFiltered * $(Alpha)) + e;\n"
+        "$(DeltaG) += eFiltered * $(E_post);\n"
+        "$(eFiltered) = eFiltered;\n");
+    
+    SET_PARAM_NAMES({"TauE"});  // Eligibility trace time constant [ms]
+        
+    SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"}});
+    
+    SET_DERIVED_PARAMS({
+        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
+    
+};
+IMPLEMENT_MODEL(EProp);
 
 void modelDefinition(ModelSpec &model)
 {
@@ -167,11 +196,11 @@ void modelDefinition(ModelSpec &model)
     // going to make these neurons spike - the paper then 
     // SORT OF suggests that they use 1.0
     const double weight0 = 1.0;
-  
+ 
     model.setDT(1.0);
     model.setName("pattern_recognition_1_1");
     model.setMergePostsynapticModels(true);
-    
+
     //---------------------------------------------------------------------------
     // Parameters and state variables
     //---------------------------------------------------------------------------
@@ -197,8 +226,9 @@ void modelDefinition(ModelSpec &model)
         0.0,    // V
         0.0,    // Psi
         0.0,    // RefracTime
-        0.0);   // Trace
-    
+        0.0,    // ZFilter
+        0.0);   // E
+
     // Output population
     OutputRegression::ParamValues outputParamVals(
         20.0,       // Membrane time constant [ms]
@@ -207,7 +237,7 @@ void modelDefinition(ModelSpec &model)
         3.0,        // Frequency of sine wave 2 [Hz]
         5.0,        // Frequency of sine wave 3 [Hz]
         1000.0);    // Pattern length [ms]
-    
+
     InitVarSnippet::Uniform::ParamValues outputAmplDist(0.5, 2.0);
     InitVarSnippet::Uniform::ParamValues outputPhaseDist(0.0, 2.0 * PI);
     OutputRegression::VarValues outputInitVals(
@@ -220,54 +250,60 @@ void modelDefinition(ModelSpec &model)
         initVar<InitVarSnippet::Uniform>(outputPhaseDist),  // Phase1
         initVar<InitVarSnippet::Uniform>(outputPhaseDist),  // Phase2
         initVar<InitVarSnippet::Uniform>(outputPhaseDist)); // Phase3
+
+    EProp::ParamValues epropParamVals(20.0);    // Eligibility trace time constant [ms]
     
     // Feedforward input->recurrent connections
     InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(20.0));
-    WeightUpdateModels::StaticPulse::VarValues inputRecurrentInitVals(
-        initVar<InitVarSnippet::Normal>(inputRecurrentWeightDist));
-    
+    EProp::VarValues inputRecurrentInitVals(
+        initVar<InitVarSnippet::Normal>(inputRecurrentWeightDist),  // g
+        0.0,                                                        // eFiltered
+        0.0);                                                       // DeltaG
+
     // Recurrent connections
     InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(600.0));
-    WeightUpdateModels::StaticPulse::VarValues recurrentRecurrentInitVals(
-        initVar<InitVarSnippet::Normal>(recurrentRecurrentWeightDist));
-        
+    EProp::VarValues recurrentRecurrentInitVals(
+        initVar<InitVarSnippet::Normal>(recurrentRecurrentWeightDist),  // g
+        0.0,                                                            // eFiltered
+        0.0);                                                           // DeltaG
+
     // Feedforward recurrent->output connections
     InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(600.0));
     WeightUpdateModels::StaticPulse::VarValues recurrentOutputInitVals(
-        initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist));
-    
+        initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist));    // g
+
     // Feedback connections
     // **HACK** this is actually a nasty corner case for the initialisation rules
     // We really want this uninitialised as we are going to copy over transpose 
     // But then initialiseSparse would copy over host values
     Continuous::VarValues outputRecurrentInitVals(0.0);
-   
+
     //---------------------------------------------------------------------------
     // Neuron populations
     //---------------------------------------------------------------------------
     model.addNeuronPopulation<Input>("Input", 20, inputParamVals, inputInitVals);
     model.addNeuronPopulation<Recurrent>("Recurrent", 600, recurrentParamVals, recurrentInitVals);
     model.addNeuronPopulation<OutputRegression>("Output", 3, outputParamVals, outputInitVals);
-    
+
     //---------------------------------------------------------------------------
     // Synapse populations
     //---------------------------------------------------------------------------
-    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+    model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
         "InputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Input", "Recurrent",
-        {}, inputRecurrentInitVals,
+        epropParamVals, inputRecurrentInitVals,
         {}, {});
-    
+
     model.addSynapsePopulation<Continuous, Feedback>(
         "OutputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Output", "Recurrent",
         {}, outputRecurrentInitVals,
         {}, {});
 
-    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+    model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
         "RecurrentRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Recurrent", "Recurrent",
-        {}, recurrentRecurrentInitVals,
+        epropParamVals, recurrentRecurrentInitVals,
         {}, {});
 
     model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
