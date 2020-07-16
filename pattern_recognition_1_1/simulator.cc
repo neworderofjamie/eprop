@@ -9,13 +9,16 @@ int main()
     initialize();
     initializeSparse();
     
-    AnalogueRecorder<float> outputRecorder("output.csv", {YStarOutput}, 3, ",");
+    AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, 3, ",");
 
     while(t < 5000.0) {
         stepTime();
         
+        // Download state
+        pullYOutputFromDevice();
         pullYStarOutputFromDevice();
 
+        // Record
         outputRecorder.record(t);
     }
 }
