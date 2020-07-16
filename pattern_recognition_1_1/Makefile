@@ -23,3 +23,8 @@ batch_learning.o: batch_learning.cc
 
 generated_code:
 	$(MAKE) -C $(GENERATED_CODE_DIR)
+
+clean:
+	$(MAKE) -C $(GENERATED_CODE_DIR) clean
+	rm -f *.o
+	rm pattern_recognition_1_1
