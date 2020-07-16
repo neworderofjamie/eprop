@@ -13,9 +13,6 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{BCF90FF9-DA94-495F-BA75-99913D8EC6F4}</ProjectGuid>
   </PropertyGroup>
-  <ItemGroup>
-    <ClCompile Include="simulator.cc" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -23,14 +20,16 @@
     <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
+    <!-- **HACK** determine the installed CUDA version by regexing CUDA path -->
+    <CudaVersion>$([System.Text.RegularExpressions.Regex]::Match($(CUDA_PATH), "\\v([0-9.]+)$").Groups[1].Value)</CudaVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).props" />
   </ImportGroup>
-  <ImportGroup>
+  <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <OutDir>./</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
@@ -46,16 +45,30 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>pattern_recognition_1_1_CODE</AdditionalIncludeDirectories>
     </ClCompile>
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+      <CodeGeneration>compute_61,sm_61</CodeGeneration>
+      <FastMath>false</FastMath>
+      <GenerateLineInfo>false</GenerateLineInfo>
+    </CudaCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding Condition="'$(Configuration)'=='Release'">true</EnableCOMDATFolding>
       <OptimizeReferences Condition="'$(Configuration)'=='Release'">true</OptimizeReferences>
-      <AdditionalDependencies Condition="'$(Configuration)'=='Release'">runner_Release.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalDependencies Condition="'$(Configuration)'=='Debug'">runner_Debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Configuration)'=='Release'">cudart_static.lib;runner_Release.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Configuration)'=='Debug'">cudart_static.lib;runner_Debug.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="simulator.cc" />
+    <CudaCompile Include="transpose.cc" >
+      <AdditionalOptions Condition=" !$([System.String]::new('%(BaseCommandLineTemplate)').Contains('-x cu')) ">-x cu %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).targets" />
   </ImportGroup>
   <Target Name="FindUserProjects" BeforeTargets="PrepareForBuild">
     <Exec Command="where genn-buildmodel.bat" ConsoleToMsBuild="true">
