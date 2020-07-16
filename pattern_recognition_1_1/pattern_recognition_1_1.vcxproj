@@ -62,7 +62,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="simulator.cc" />
-    <CudaCompile Include="transpose.cc" >
+    <CudaCompile Include="batch_learning.cc" >
       <AdditionalOptions Condition=" !$([System.String]::new('%(BaseCommandLineTemplate)').Contains('-x cu')) ">-x cu %(AdditionalOptions)</AdditionalOptions>
     </CudaCompile>
   </ItemGroup>

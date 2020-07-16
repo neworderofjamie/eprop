@@ -270,21 +270,21 @@ void modelDefinition(ModelSpec &model)
     EProp::ParamValues epropParamVals(20.0);    // Eligibility trace time constant [ms]
     
     // Feedforward input->recurrent connections
-    InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(20.0));
+    InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numInputNeurons));
     EProp::VarValues inputRecurrentInitVals(
         initVar<InitVarSnippet::Normal>(inputRecurrentWeightDist),  // g
         0.0,                                                        // eFiltered
         0.0);                                                       // DeltaG
 
     // Recurrent connections
-    InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(600.0));
+    InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     EProp::VarValues recurrentRecurrentInitVals(
         initVar<InitVarSnippet::Normal>(recurrentRecurrentWeightDist),  // g
         0.0,                                                            // eFiltered
         0.0);                                                           // DeltaG
 
     // Feedforward recurrent->output connections
-    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(600.0));
+    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     OutputLearning::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
         0.0);                                                       // DeltaG
@@ -298,9 +298,12 @@ void modelDefinition(ModelSpec &model)
     //---------------------------------------------------------------------------
     // Neuron populations
     //---------------------------------------------------------------------------
-    model.addNeuronPopulation<Input>("Input", 20, inputParamVals, inputInitVals);
-    model.addNeuronPopulation<Recurrent>("Recurrent", 600, recurrentParamVals, recurrentInitVals);
-    model.addNeuronPopulation<OutputRegression>("Output", 3, outputParamVals, outputInitVals);
+    model.addNeuronPopulation<Input>("Input", Parameters::numInputNeurons,
+                                     inputParamVals, inputInitVals);
+    model.addNeuronPopulation<Recurrent>("Recurrent", Parameters::numRecurrentNeurons,
+                                         recurrentParamVals, recurrentInitVals);
+    model.addNeuronPopulation<OutputRegression>("Output", Parameters::numOutputNeurons,
+                                                outputParamVals, outputInitVals);
 
     //---------------------------------------------------------------------------
     // Synapse populations
