@@ -168,21 +168,20 @@ public:
     DECLARE_MODEL(EProp, 1, 3);
     
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
-    
+
     SET_SYNAPSE_DYNAMICS_CODE(
         "const scalar e = $(ZFilter_pre) * $(Psi_post);\n"
         "scalar eFiltered = $(eFiltered);\n"
         "eFiltered = (eFiltered * $(Alpha)) + e;\n"
         "$(DeltaG) += eFiltered * $(E_post);\n"
         "$(eFiltered) = eFiltered;\n");
-    
+
     SET_PARAM_NAMES({"TauE"});  // Eligibility trace time constant [ms]
-        
+
     SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"}});
-    
+
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
-    
 };
 IMPLEMENT_MODEL(EProp);
 
@@ -194,11 +193,11 @@ class OutputLearning : public WeightUpdateModels::Base
 {
 public:
     DECLARE_MODEL(OutputLearning, 0, 2);
-    
+
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
-    
+
     SET_SYNAPSE_DYNAMICS_CODE("$(DeltaG) += $(ZFilter_pre) * $(E_post);\n");
-    
+
     SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"}});
 };
 IMPLEMENT_MODEL(OutputLearning);
@@ -213,7 +212,7 @@ void modelDefinition(ModelSpec &model)
     // going to make these neurons spike - the paper then 
     // SORT OF suggests that they use 1.0
     const double weight0 = 1.0;
- 
+
     model.setDT(1.0);
     model.setName("pattern_recognition_1_1");
     model.setMergePostsynapticModels(true);
