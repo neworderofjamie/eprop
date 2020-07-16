@@ -3,6 +3,37 @@
 #include "parameters.h"
 
 constexpr double PI = 3.14159265358979323846264338327950288419;
+
+//---------------------------------------------------------------------------
+// Continuous
+//---------------------------------------------------------------------------
+//! Simple continous synapse for error feedback
+class Continuous : public WeightUpdateModels::Base
+{
+public:
+    DECLARE_MODEL(Continuous, 0, 1);
+
+    SET_VARS({{"g", "scalar"}});
+
+    SET_SYNAPSE_DYNAMICS_CODE("$(addToInSyn, $(g) * $(E_pre));\n");
+};
+IMPLEMENT_MODEL(Continuous);
+
+//---------------------------------------------------------------------------
+// Feedback
+//---------------------------------------------------------------------------
+//! Simple postsynaptic model which transfer input directly to neuron without any dynamics
+class Feedback : public PostsynapticModels::Base
+{
+public:
+    DECLARE_MODEL(Feedback, 0, 0);
+
+    SET_APPLY_INPUT_CODE(
+        "$(IsynFeedback) += $(inSyn);\n"
+        "$(inSyn) = 0;\n");
+};
+IMPLEMENT_MODEL(Feedback);
+
 //----------------------------------------------------------------------------
 // Recurrent
 //----------------------------------------------------------------------------
@@ -34,10 +65,12 @@ public:
         "Vthresh",      // Spiking threshold [mV]
         "TauRefrac"});  // Refractory time constant [ms]
 
+    SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, {"Trace", "scalar"}});
+
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
 
-    SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, {"Trace", "scalar"}});
+    SET_ADDITIONAL_INPUT_VARS({{"IsynFeedback", "scalar", 0.0}});
 
     SET_NEEDS_AUTO_REFRACTORY(false);
 };
@@ -137,7 +170,8 @@ void modelDefinition(ModelSpec &model)
   
     model.setDT(1.0);
     model.setName("pattern_recognition_1_1");
-
+    model.setMergePostsynapticModels(true);
+    
     //---------------------------------------------------------------------------
     // Parameters and state variables
     //---------------------------------------------------------------------------
@@ -202,6 +236,12 @@ void modelDefinition(ModelSpec &model)
     WeightUpdateModels::StaticPulse::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist));
     
+    // Feedback connections
+    // **HACK** this is actually a nasty corner case for the initialisation rules
+    // We really want this uninitialised as we are going to copy over transpose 
+    // But then initialiseSparse would copy over host values
+    Continuous::VarValues outputRecurrentInitVals(0.0);
+   
     //---------------------------------------------------------------------------
     // Neuron populations
     //---------------------------------------------------------------------------
@@ -216,6 +256,12 @@ void modelDefinition(ModelSpec &model)
         "InputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Input", "Recurrent",
         {}, inputRecurrentInitVals,
+        {}, {});
+    
+    model.addSynapsePopulation<Continuous, Feedback>(
+        "OutputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
+        "Output", "Recurrent",
+        {}, outputRecurrentInitVals,
         {}, {});
 
     model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
