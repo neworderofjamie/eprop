@@ -186,6 +186,23 @@ public:
 };
 IMPLEMENT_MODEL(EProp);
 
+//---------------------------------------------------------------------------
+// OutputLearning
+//---------------------------------------------------------------------------
+//! Basic implementation of output learning rule
+class OutputLearning : public WeightUpdateModels::Base
+{
+public:
+    DECLARE_MODEL(OutputLearning, 0, 2);
+    
+    SET_SIM_CODE("$(addToInSyn, $(g));\n");
+    
+    SET_SYNAPSE_DYNAMICS_CODE("$(DeltaG) += $(ZFilter_pre) * $(E_post);\n");
+    
+    SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"}});
+};
+IMPLEMENT_MODEL(OutputLearning);
+
 void modelDefinition(ModelSpec &model)
 {
     // Calculate weight scaling factor
@@ -269,8 +286,9 @@ void modelDefinition(ModelSpec &model)
 
     // Feedforward recurrent->output connections
     InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(600.0));
-    WeightUpdateModels::StaticPulse::VarValues recurrentOutputInitVals(
-        initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist));    // g
+    OutputLearning::VarValues recurrentOutputInitVals(
+        initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
+        0.0);                                                       // DeltaG
 
     // Feedback connections
     // **HACK** this is actually a nasty corner case for the initialisation rules
@@ -306,7 +324,7 @@ void modelDefinition(ModelSpec &model)
         epropParamVals, recurrentRecurrentInitVals,
         {}, {});
 
-    model.addSynapsePopulation<WeightUpdateModels::StaticPulse, PostsynapticModels::DeltaCurr>(
+    model.addSynapsePopulation<OutputLearning, PostsynapticModels::DeltaCurr>(
         "RecurrentOutput", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Recurrent", "Output",
         {}, recurrentOutputInitVals,
