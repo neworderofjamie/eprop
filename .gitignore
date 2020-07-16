@@ -16,3 +16,8 @@
 
 # Ignore generator executables
 **/generator_*_*.*
+**/generator
+**/generator.d
+
+# Ignore CSV files used for recording
+*.csv
