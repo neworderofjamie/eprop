@@ -21,7 +21,7 @@ public:
         "  $(Psi) = 0.0;\n"
         "}\n"
         "else {\n"
-        "  $(Psi) = (1.0 / $(Vthresh)) * fmax(0.0, 1.0 - fabs(($(V) - $(Vthresh)) / $(Vthresh)));\n"
+        "  $(Psi) = (1.0 / $(Vthresh)) * 0.3 * fmax(0.0, 1.0 - fabs(($(V) - $(Vthresh)) / $(Vthresh)));\n"
         "}\n");
 
     SET_THRESHOLD_CONDITION_CODE("$(RefracTime) <= 0.0 && $(V) >= $(Vthresh)");
@@ -165,7 +165,7 @@ IMPLEMENT_MODEL(Continuous);
 class EProp : public WeightUpdateModels::Base
 {
 public:
-    DECLARE_MODEL(EProp, 1, 3);
+    DECLARE_MODEL(EProp, 1, 5);
     
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
 
@@ -178,7 +178,8 @@ public:
 
     SET_PARAM_NAMES({"TauE"});  // Eligibility trace time constant [ms]
 
-    SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"}});
+    SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"},
+              {"M", "scalar"}, {"V", "scalar"}});
 
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
@@ -192,13 +193,14 @@ IMPLEMENT_MODEL(EProp);
 class OutputLearning : public WeightUpdateModels::Base
 {
 public:
-    DECLARE_MODEL(OutputLearning, 0, 2);
+    DECLARE_MODEL(OutputLearning, 0, 4);
 
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
 
     SET_SYNAPSE_DYNAMICS_CODE("$(DeltaG) += $(ZFilter_pre) * $(E_post);\n");
 
-    SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"}});
+    SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"}, 
+              {"M", "scalar"}, {"V", "scalar"}});
 };
 IMPLEMENT_MODEL(OutputLearning);
 
@@ -274,20 +276,26 @@ void modelDefinition(ModelSpec &model)
     EProp::VarValues inputRecurrentInitVals(
         initVar<InitVarSnippet::Normal>(inputRecurrentWeightDist),  // g
         0.0,                                                        // eFiltered
-        0.0);                                                       // DeltaG
+        0.0,                                                        // DeltaG
+        0.0,                                                        // M
+        0.0);                                                       // V
 
     // Recurrent connections
     InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     EProp::VarValues recurrentRecurrentInitVals(
         initVar<InitVarSnippet::Normal>(recurrentRecurrentWeightDist),  // g
         0.0,                                                            // eFiltered
-        0.0);                                                           // DeltaG
+        0.0,                                                            // DeltaG
+        0.0,                                                            // M
+        0.0);                                                           // V
 
     // Feedforward recurrent->output connections
     InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     OutputLearning::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
-        0.0);                                                       // DeltaG
+        0.0,                                                        // DeltaG
+        0.0,                                                        // M
+        0.0);                                                       // V
 
     // Feedback connections
     // **HACK** this is actually a nasty corner case for the initialisation rules

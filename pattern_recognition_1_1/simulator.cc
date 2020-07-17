@@ -40,7 +40,7 @@ int main()
         AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, Parameters::numOutputNeurons, ",");
 
         // Loop through trials
-        float learningRate = 0.0000001f;
+        float learningRate = 0.003f;
         for(unsigned int trial = 0; trial <= 1000; trial++) {
             if((trial % 100) == 0) {
                 // if this isn't the first trial, reduce learning rate
@@ -68,15 +68,15 @@ int main()
                 }
             }
             // Apply learning
-            BatchLearning::fixedRateLearningCUDA(d_DeltaGInputRecurrent, d_gInputRecurrent, 
-                                                 Parameters::numInputNeurons, Parameters::numRecurrentNeurons, 
-                                                 learningRate);
-            BatchLearning::fixedRateLearningCUDA(d_DeltaGRecurrentRecurrent, d_gRecurrentRecurrent, 
-                                                 Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
-                                                 learningRate);
-            BatchLearning::fixedRateLearningTransposeCUDA(d_DeltaGRecurrentOutput, d_gRecurrentOutput, d_gOutputRecurrent, 
-                                                          Parameters::numRecurrentNeurons, Parameters::numOutputNeurons, 
-                                                          learningRate);
+            BatchLearning::adamOptimizerCUDA(d_DeltaGInputRecurrent, d_MInputRecurrent, d_VInputRecurrent, d_gInputRecurrent, 
+                                             Parameters::numInputNeurons, Parameters::numRecurrentNeurons, 
+                                             trial, learningRate);
+            BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
+                                             Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
+                                             trial, learningRate);
+            BatchLearning::adamOptimizerTransposeCUDA(d_DeltaGRecurrentOutput, d_MRecurrentOutput, d_VRecurrentOutput, d_gRecurrentOutput, d_gOutputRecurrent, 
+                                                      Parameters::numRecurrentNeurons, Parameters::numOutputNeurons, 
+                                                      trial, learningRate);
         }
     }
     catch(std::exception &ex) {
