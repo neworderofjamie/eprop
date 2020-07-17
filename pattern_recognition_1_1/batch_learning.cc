@@ -51,7 +51,7 @@ private:
 template<typename Operation>
 __global__ void transposeKernel(float *d_in, float *d_out, 
                                 unsigned int numInRows, unsigned int numInCols,
-                                Operation &operation)
+                                Operation operation)
 {
     // **NOTE** adding extra column prevents conflicts between 32 shared memory banks
     __shared__ float shTile[TILE_DIM][TILE_DIM + 1];
@@ -104,7 +104,7 @@ __global__ void transposeKernel(float *d_in, float *d_out,
 }
 
 template<typename Operation>
-__global__ void updateKernel(float *d_G, unsigned int numSynapses, Operation &operation)
+__global__ void updateKernel(float *d_G, unsigned int numSynapses, Operation operation)
 {
     const unsigned int idx = (blockIdx.x * 32) + threadIdx.x;
     if(idx < numSynapses) {
