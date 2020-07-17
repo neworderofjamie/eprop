@@ -24,6 +24,10 @@ public:
     }
 };
 
+//----------------------------------------------------------------------------
+// Simple 'operation' to use with transpose and update  
+// kernels to perform learning with a fixed rate
+//----------------------------------------------------------------------------
 class FixedLearningRate
 {
 public:
@@ -34,8 +38,8 @@ public:
     
     __forceinline__ __device__ bool updateParameter(float &param, unsigned int idx)
     {
-        // Add gradient to parameter, scaled by learning rate
-        param += (m_Gradients[idx] * m_LearningRate);
+        // Subtract gradient to parameter, scaled by learning rate
+        param -= (m_Gradients[idx] * m_LearningRate);
         
         // Zero gradient
         m_Gradients[idx] = 0.0f;
@@ -45,6 +49,56 @@ public:
 private:
     float *m_Gradients;
     const float m_LearningRate;
+};
+
+//----------------------------------------------------------------------------
+// Simple 'operation' to apply Adam optimizer to parameter in transpose and update kernels
+//----------------------------------------------------------------------------
+class AdamOptimizer
+{
+public:
+    AdamOptimizer(float *gradients, float *m, float *v, unsigned int t, float alpha = 0.001, 
+                  float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1E-8)
+    :   m_Gradients(gradients), m_M(m), m_V(v), m_Alpha(alpha), 
+        m_Beta1(beta1), m_Beta2(beta2), m_Epsilon(epsilon), 
+        m_FirstMomentScale(1.0f / (1.0f - pow(m_Beta1, t + 1))),
+        m_SecondMomentScale(1.0f / (1.0f - pow(m_Beta2, t + 1)))
+    {
+    }
+    
+    __forceinline__ __device__ bool updateParameter(float &param, unsigned int idx)
+    {
+        // Get gradients
+        const float gradient = m_Gradients[idx];
+        
+        // Update biased first moment estimate
+        const float mT = (m_Beta1 * m_M[idx]) + ((1.0f - m_Beta1) * gradient);
+        
+        // Update biased second moment estimate
+        const float vT = (m_Beta2 * m_V[idx]) + ((1.0f - m_Beta2) * gradient * gradient);
+        
+        // Add gradient to parameter, scaled by learning rate
+        param -= (m_Alpha * mT * m_FirstMomentScale) / (sqrt(vT * m_SecondMomentScale) + m_Epsilon);
+        
+        // Write moments back to memory
+        m_M[idx] = mT;
+        m_V[idx] = vT;
+        
+        // Zero gradient
+        m_Gradients[idx] = 0.0f;
+        return true;
+    }
+    
+private:
+    float *m_Gradients;
+    float *m_M;
+    float *m_V;
+    const float m_Alpha;
+    const float m_Beta1;
+    const float m_Beta2;
+    const float m_Epsilon;
+    const float m_FirstMomentScale;
+    const float m_SecondMomentScale;
 };
 
 // Optimised CUDA transpose kernel based on https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc/
@@ -162,4 +216,35 @@ void fixedRateLearningTransposeCUDA(float *d_DeltaGIn, float *d_GIn, float *d_GO
     CHECK_CUDA_ERRORS(cudaPeekAtLastError());
 }
 
+void adamOptimizerCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G, 
+                       unsigned int numRows, unsigned int numCols, unsigned int t, 
+                       float alpha, float beta1, float beta2, float epsilon)
+{
+    const unsigned int numSynapses = numRows * numCols;
+    const unsigned int numBlocks = (numSynapses + 31) / 32;
+    
+    AdamOptimizer adam(d_DeltaG, d_M, d_V, t, alpha, beta1, beta2, epsilon);
+    
+    const dim3 threads(32, 1);
+    const dim3 grid(numBlocks, 1);
+    updateKernel<<<grid, threads>>>(d_G, numSynapses, adam);
+    CHECK_CUDA_ERRORS(cudaPeekAtLastError());
+}
+
+void adamOptimizerTransposeCUDA(float *d_DeltaGIn, float *d_MIn, float *d_VIn, float *d_GIn, 
+                                float *d_GOut, unsigned int numInRows, unsigned int numInCols, 
+                                unsigned int t, float alpha, float beta1, 
+                                float beta2, float epsilon)
+{
+    // Calculate number of blocks required to process matrix
+    const unsigned int numBlockX = (numInCols + TILE_DIM - 1) / TILE_DIM;
+    const unsigned int numBlockY = (numInRows + TILE_DIM - 1) / TILE_DIM;
+    
+    AdamOptimizer adam(d_DeltaGIn, d_MIn, d_VIn, t, alpha, beta1, beta2, epsilon);
+    
+    const dim3 threads(32, BLOCK_HEIGHT);
+    const dim3 grid(numBlockX, numBlockY);
+    transposeKernel<<<grid, threads>>>(d_GIn, d_GOut, numInRows, numInCols, adam);
+    CHECK_CUDA_ERRORS(cudaPeekAtLastError());
+}
 }   // namespace BatchLearning

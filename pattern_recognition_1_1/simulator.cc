@@ -40,7 +40,7 @@ int main()
         AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, Parameters::numOutputNeurons, ",");
 
         // Loop through trials
-        float learningRate = -0.0000001f;
+        float learningRate = 0.0000001f;
         for(unsigned int trial = 0; trial <= 1000; trial++) {
             if((trial % 100) == 0) {
                 // if this isn't the first trial, reduce learning rate
