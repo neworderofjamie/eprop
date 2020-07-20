@@ -16,7 +16,7 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries  Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
     <PlatformToolset>$(DefaultPlatformToolset)</PlatformToolset>
     <WholeProgramOptimization Condition="'$(Configuration)'=='Release'">true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
@@ -39,9 +39,9 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
-      <Optimization>Disabled</Optimization>
       <FunctionLevelLinking Condition="'$(Configuration)'=='Release'">true</FunctionLevelLinking>
       <IntrinsicFunctions Condition="'$(Configuration)'=='Release'">true</IntrinsicFunctions>
+      <ExceptionHandling>SyncCThrow</ExceptionHandling>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>pattern_recognition_1_1_CODE</AdditionalIncludeDirectories>
     </ClCompile>
@@ -61,8 +61,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="simulator.cc" />
-    <CudaCompile Include="batch_learning.cc" >
+    <CudaCompile Include="simulator.cc" />
+    <CudaCompile Include="batch_learning.cc">
       <AdditionalOptions Condition=" !$([System.String]::new('%(BaseCommandLineTemplate)').Contains('-x cu')) ">-x cu %(AdditionalOptions)</AdditionalOptions>
     </CudaCompile>
   </ItemGroup>
@@ -75,9 +75,9 @@
       <Output TaskParameter="ConsoleOutput" PropertyName="GeNNBuildModelPath" />
     </Exec>
     <ItemGroup>
-      <ClCompile>
-       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$([System.IO.Path]::GetFullPath($([System.IO.Path]::GetDirectoryName($(GeNNBuildModelPath)))\..\userproject\include))</AdditionalIncludeDirectories>
-      </ClCompile>
+      <CudaCompile>
+        <Include>$([System.IO.Path]::GetFullPath($([System.IO.Path]::GetDirectoryName($(GeNNBuildModelPath)))\..\userproject\include))</Include>
+      </CudaCompile>
     </ItemGroup>
   </Target>
 </Project>
