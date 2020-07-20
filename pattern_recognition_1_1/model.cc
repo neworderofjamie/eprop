@@ -10,12 +10,13 @@ constexpr double PI = 3.14159265358979323846264338327950288419;
 class Recurrent : public NeuronModels::Base
 {
 public:
-    DECLARE_MODEL(Recurrent, 3, 5);
+    DECLARE_MODEL(Recurrent, 4, 6);
 
     SET_SIM_CODE(
         "$(E) = $(IsynFeedback);\n"
         "$(V) = ($(Alpha) * $(V)) + $(Isyn);\n"
         "$(ZFilter) *= $(Alpha);\n"
+        "$(FAvg) *= $(AlphaFAv);\n"
         "if ($(RefracTime) > 0.0) {\n"
         "  $(RefracTime) -= DT;\n"
         "  $(Psi) = 0.0;\n"
@@ -29,18 +30,21 @@ public:
     SET_RESET_CODE(
         "$(RefracTime) = $(TauRefrac);\n"
         "$(ZFilter) += 1.0f;\n"
+        "$(FAvg) += (1.0 - $(AlphaFAv));\n"
         "$(V) -= $(Vthresh);\n");
 
     SET_PARAM_NAMES({
         "TauM",         // Membrane time constant [ms]
         "Vthresh",      // Spiking threshold [mV]
-        "TauRefrac"});  // Refractory time constant [ms]
+        "TauRefrac",    // Refractory time constant [ms]
+        "TauFAvg"});    // Firing rate averaging time constant [ms]
 
     SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, 
-              {"ZFilter", "scalar"}, {"E", "scalar"}});
+              {"ZFilter", "scalar"}, {"E", "scalar"}, {"FAvg", "scalar"}});
 
     SET_DERIVED_PARAMS({
-        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
+        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
+        {"AlphaFAv", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[3]); }}});
 
     SET_ADDITIONAL_INPUT_VARS({{"IsynFeedback", "scalar", 0.0}});
 
@@ -165,7 +169,7 @@ IMPLEMENT_MODEL(Continuous);
 class EProp : public WeightUpdateModels::Base
 {
 public:
-    DECLARE_MODEL(EProp, 1, 5);
+    DECLARE_MODEL(EProp, 3, 5);
     
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
 
@@ -173,16 +177,19 @@ public:
         "const scalar e = $(ZFilter_pre) * $(Psi_post);\n"
         "scalar eFiltered = $(eFiltered);\n"
         "eFiltered = (eFiltered * $(Alpha)) + e;\n"
-        "$(DeltaG) += eFiltered * $(E_post);\n"
+        "$(DeltaG) += (eFiltered * $(E_post)) - (($(FTargetTimestep) - $(FAvg_post)) * $(CReg) * e);\n"
         "$(eFiltered) = eFiltered;\n");
 
-    SET_PARAM_NAMES({"TauE"});  // Eligibility trace time constant [ms]
+    SET_PARAM_NAMES({"TauE",        // Eligibility trace time constant [ms]
+                     "CReg",        // Regularizer strength
+                     "FTarget"});   // Target spike rate [Hz]
 
     SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"},
               {"M", "scalar"}, {"V", "scalar"}});
 
     SET_DERIVED_PARAMS({
-        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
+        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
+        {"FTargetTimestep", [](const std::vector<double> &pars, double dt){ return pars[2] / (1000.0 * dt); }}});
 };
 IMPLEMENT_MODEL(EProp);
 
@@ -218,6 +225,7 @@ void modelDefinition(ModelSpec &model)
     model.setDT(1.0);
     model.setName("pattern_recognition_1_1");
     model.setMergePostsynapticModels(true);
+    model.setTiming(Parameters::timingEnabled);
 
     //---------------------------------------------------------------------------
     // Parameters and state variables
@@ -238,14 +246,16 @@ void modelDefinition(ModelSpec &model)
     Recurrent::ParamValues recurrentParamVals(
         20.0,   // Membrane time constant [ms]
         0.61,   // Spiking threshold [mV]
-        5.0);   // Refractory time constant [ms]
+        5.0,    // Refractory time constant [ms]
+        500.0); // Firing rate averaging time constant [ms]
 
     Recurrent::VarValues recurrentInitVals(
         0.0,    // V
         0.0,    // Psi
         0.0,    // RefracTime
         0.0,    // ZFilter
-        0.0);   // E
+        0.0,    // E
+        0.0);   // FAvg
 
     // Output population
     OutputRegression::ParamValues outputParamVals(
@@ -269,7 +279,10 @@ void modelDefinition(ModelSpec &model)
         initVar<InitVarSnippet::Uniform>(outputPhaseDist),  // Phase2
         initVar<InitVarSnippet::Uniform>(outputPhaseDist)); // Phase3
 
-    EProp::ParamValues epropParamVals(20.0);    // Eligibility trace time constant [ms]
+    EProp::ParamValues epropParamVals(
+        20.0,   // Eligibility trace time constant [ms]
+        3.0,   // Regularizer strength
+        10.0);  // Target spike rate [Hz]
     
     // Feedforward input->recurrent connections
     InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numInputNeurons));
@@ -279,7 +292,7 @@ void modelDefinition(ModelSpec &model)
         0.0,                                                        // DeltaG
         0.0,                                                        // M
         0.0);                                                       // V
-
+        
     // Recurrent connections
     InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     EProp::VarValues recurrentRecurrentInitVals(
