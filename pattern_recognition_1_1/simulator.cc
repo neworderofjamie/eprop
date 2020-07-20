@@ -9,6 +9,7 @@
 
 // EProp includes
 #include "batch_learning.h"
+#include "cuda_timer.h"
 #include "parameters.h"
 
 int main()
@@ -40,7 +41,10 @@ int main()
         
         AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, Parameters::numOutputNeurons, ",");
 
-     
+        CUDATimer inputRecurrentTimer;
+        CUDATimer recurrentRecurrentTimer;
+        CUDATimer recurrentOutputTimer;
+        
         float learningRate = 0.003f;
         {
             Timer a("Simulation wall clock:");
@@ -73,15 +77,37 @@ int main()
                     }
                 }
                 // Apply learning
+                if(Parameters::timingEnabled) {
+                    inputRecurrentTimer.start();
+                }
                 BatchLearning::adamOptimizerCUDA(d_DeltaGInputRecurrent, d_MInputRecurrent, d_VInputRecurrent, d_gInputRecurrent, 
                                                  Parameters::numInputNeurons, Parameters::numRecurrentNeurons, 
                                                  trial, learningRate);
+                if(Parameters::timingEnabled) {
+                    inputRecurrentTimer.stop();
+                    recurrentRecurrentTimer.start();
+                }
                 BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
                                                  Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
                                                  trial, learningRate);
+                if(Parameters::timingEnabled) {
+                    recurrentRecurrentTimer.stop();
+                    recurrentOutputTimer.start();
+                }
                 BatchLearning::adamOptimizerTransposeCUDA(d_DeltaGRecurrentOutput, d_MRecurrentOutput, d_VRecurrentOutput, d_gRecurrentOutput, d_gOutputRecurrent, 
                                                           Parameters::numRecurrentNeurons, Parameters::numOutputNeurons, 
                                                           trial, learningRate);
+                if(Parameters::timingEnabled) {
+                    recurrentOutputTimer.stop();
+                    
+                    // Wait for last timer to complete
+                    recurrentOutputTimer.synchronize();
+                    
+                    // Update counters
+                    inputRecurrentTimer.update();
+                    recurrentRecurrentTimer.update();
+                    recurrentOutputTimer.update();
+                }
             }
         }
         
@@ -92,7 +118,11 @@ int main()
             std::cout << "\tNeuron update:" << neuronUpdateTime << std::endl;
             std::cout << "\tPresynaptic update:" << presynapticUpdateTime << std::endl;
             std::cout << "\tSynapse dynamics:" << synapseDynamicsTime << std::endl;
-
+            
+            std::cout << "Batch learning:" << std::endl;
+            std::cout << "\tInput->recurrent learning:" << inputRecurrentTimer.getTotalTime() << std::endl;
+            std::cout << "\tRecurrent->recurrent learning:" << recurrentRecurrentTimer.getTotalTime() << std::endl;
+            std::cout << "\tRecurrent->output learning:" << recurrentOutputTimer.getTotalTime() << std::endl;
         }
     }
     catch(std::exception &ex) {
