@@ -26,7 +26,7 @@ def plot_timeslice(input_spikes, recurrent_spikes, output_data, trial, axes):
     axes[1].set_ylim((-3.0, 3.0))
 
     axes[2].set_title("Y2 (MSE=%f)" % (np.sum(y3_error * y3_error) / float(len(y3_error))))
-    axes[2].plot(output_data["time"], output_data["y2"], color="blue")
+    axes[2].plot(output_data["time"], output_data["y3"], color="blue")
     axes[2].plot(output_data["time"], output_data["y_star3"], color="blue", linestyle="--", alpha=0.5)
     axes[2].set_ylim((-3.0, 3.0))
 
