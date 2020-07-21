@@ -22,6 +22,10 @@ public:
     {
         return false;
     }
+    
+    __forceinline__ __device__ void moveParams(unsigned int, unsigned int)
+    {
+    }
 };
 
 //----------------------------------------------------------------------------
@@ -44,6 +48,11 @@ public:
         // Zero gradient
         m_Gradients[idx] = 0.0f;
         return true;
+    }
+    
+    __forceinline__ __device__ void moveParams(unsigned int srcIdx, unsigned int dstIdx)
+    {
+        m_Gradients[dstIdx] = m_Gradients[srcIdx];
     }
     
 private:
@@ -87,6 +96,13 @@ public:
         // Zero gradient
         m_Gradients[idx] = 0.0f;
         return true;
+    }
+    
+    __forceinline__ __device__ void moveParams(unsigned int srcIdx, unsigned int dstIdx)
+    {
+        m_Gradients[dstIdx] = m_Gradients[srcIdx];
+        m_M[dstIdx] = m_M[srcIdx];
+        m_V[dstIdx] = m_M[dstIdx];
     }
     
 private:
@@ -169,6 +185,54 @@ __global__ void updateKernel(float *d_G, unsigned int numSynapses, Operation ope
         }
     }
 }
+
+template<typename Operation>
+__global__ void deepRFirstPassKernel(float *d_G, float *d_EFiltered, unsigned int *d_RowLength, unsigned int *d_Ind, 
+                                     unsigned int numRows, unsigned int maxRowLength, 
+                                     Operation operation)
+{
+    // If there's a row for this thread to process
+    const unsigned int idPre = (blockIdx.x * 32) + threadIdx.x;
+    if(idPre < numRows) {
+        // Loop through synapses
+        unsigned int rowLength = d_RowLength[idPre];
+        const unsigned int rowStartIdx = idPre * maxRowLength;
+        for(unsigned int j = 0; j < rowLength; j++) {
+            const unsigned int idx = rowStartIdx + j;
+            
+            // Cache parameter and its sign in register
+            float gIn = d_G[idx];
+            const auto oldSign = signbit(gIn);
+            
+            // If update changes parameter
+            // **TODO** L1 regularizer
+            if(operation.updateParameter(gIn, idx)) {
+                // If sign hasn't changed, update weight in memory
+                if(signbit(gIn) == oldSign) {
+                    d_G[idx] = gIn;
+                }
+                // Otherwise, make connection dormant
+                else {
+                    // Calculate index of last synapse in row
+                    const unsigned int rowLastIdx = rowStartIdx + rowLength - 1;
+                    
+                    // Overwrite this synapse with one at end of row
+                    d_G[idx] = d_G[rowLastIdx];
+                    d_EFiltered[idx] = d_EFiltered[rowLastIdx];
+                    
+                    // Instruct operation to do the same for any of its parameters
+                    operation.moveParams(rowLastIdx, idx);
+                    
+                    // Decrement row length
+                    rowLength--;
+                }
+            }
+        }
+        
+        // Write back updated row length
+        d_RowLength[idPre] = rowLength;
+    }
+}
 }   // Anonymous namespace
 
 //----------------------------------------------------------------------------
@@ -229,6 +293,14 @@ void adamOptimizerCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
     const dim3 grid(numBlocks, 1);
     updateKernel<<<grid, threads>>>(d_G, numSynapses, adam);
     CHECK_CUDA_ERRORS(cudaPeekAtLastError());
+}
+
+void adamOptimizerDeepRCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
+                            unsigned int *d_RowLength, unsigned int *d_Ind, 
+                            unsigned int numRows, unsigned int numCols, unsigned int maxRowLength, unsigned int t, 
+                            float alpha , float beta1, float beta2, float epsilon)
+{
+    
 }
 
 void adamOptimizerTransposeCUDA(float *d_DeltaGIn, float *d_MIn, float *d_VIn, float *d_GIn, 
