@@ -11,6 +11,7 @@
 // EProp includes
 #include "batch_learning.h"
 #include "cuda_timer.h"
+#include "deep_r.h"
 #include "parameters.h"
 
 int main()
@@ -19,15 +20,23 @@ int main()
     {
         std::mt19937 rng;
         
+        
         allocateMem();
+        
         initialize();
         
         // Use CUDA to calculate initial transpose of feedforward recurrent->output weights
         BatchLearning::transposeCUDA(d_gRecurrentOutput, d_gOutputRecurrent, 
                                      Parameters::numRecurrentNeurons, Parameters::numOutputNeurons);
-
+        
         initializeSparse();
 
+#ifdef USE_DEEP_R
+        DeepR recurrentRecurrentdeepR(Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, maxRowLengthRecurrentRecurrent, 
+                                      rowLengthRecurrentRecurrent, d_rowLengthRecurrentRecurrent, d_indRecurrentRecurrent,
+                                      d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, 
+                                      d_gRecurrentRecurrent, d_eFilteredRecurrentRecurrent);
+#endif
         // **TEMP** test transpose
         /*pullgRecurrentOutputFromDevice();
         pullgOutputRecurrentFromDevice();
@@ -90,18 +99,13 @@ int main()
                     inputRecurrentTimer.stop();
                     recurrentRecurrentTimer.start();
                 }
-                if(Parameters::recurrentConnectivity < 1.0) {
-                    BatchLearning::adamOptimizerDeepRCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, 
-                                                          d_gRecurrentRecurrent, d_eFilteredRecurrentRecurrent,
-                                                          rowLengthRecurrentRecurrent, d_rowLengthRecurrentRecurrent, d_indRecurrentRecurrent, 
-                                                          Parameters::numRecurrentNeurons, maxRowLengthRecurrentRecurrent, 
-                                                          trial, rng, learningRate);
-                }
-                else {
-                    BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
-                                                     Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
-                                                     trial, learningRate);
-                }
+#ifdef USE_DEEP_R
+                recurrentRecurrentdeepR.update(trial);
+#else
+                BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
+                                                 Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
+                                                 trial, learningRate);
+#endif
                 if(Parameters::timingEnabled) {
                     recurrentRecurrentTimer.stop();
                     recurrentOutputTimer.start();

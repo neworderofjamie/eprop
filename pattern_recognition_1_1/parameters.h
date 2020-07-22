@@ -1,5 +1,7 @@
 #pragma once
 
+#define USE_DEEP_R
+
 namespace Parameters
 {
     constexpr bool timingEnabled = true;
@@ -8,5 +10,5 @@ namespace Parameters
     constexpr unsigned int numRecurrentNeurons = 600;
     constexpr unsigned int numOutputNeurons = 3;
     
-    constexpr double recurrentConnectivity = 0.1;
+    constexpr double deepRRecurrentConnectivity = 0.1;
 }

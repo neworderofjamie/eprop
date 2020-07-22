@@ -303,7 +303,7 @@ void modelDefinition(ModelSpec &model)
         0.0);                                                           // V
 
     // Feedforward recurrent->output connections
-    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons * Parameters::recurrentConnectivity));
+    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons * Parameters::deepRRecurrentConnectivity));
     OutputLearning::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
         0.0,                                                        // DeltaG
@@ -341,22 +341,21 @@ void modelDefinition(ModelSpec &model)
         {}, outputRecurrentInitVals,
         {}, {});
 
-    if(Parameters::recurrentConnectivity < 1.0) {
-        InitSparseConnectivitySnippet::FixedProbability::ParamValues fixedProb(Parameters::recurrentConnectivity); // 0 - prob
-        model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
-            "RecurrentRecurrent", SynapseMatrixType::SPARSE_INDIVIDUALG, NO_DELAY,
-            "Recurrent", "Recurrent",
-            epropParamVals, recurrentRecurrentInitVals,
-            {}, {},
-            initConnectivity<InitSparseConnectivitySnippet::FixedProbability>(fixedProb));
-    }
-    else {
-        model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
-            "RecurrentRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
-            "Recurrent", "Recurrent",
-            epropParamVals, recurrentRecurrentInitVals,
-            {}, {});
-    }
+#ifdef USE_DEEP_R
+    InitSparseConnectivitySnippet::FixedProbability::ParamValues fixedProb(Parameters::deepRRecurrentConnectivity); // 0 - prob
+    model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
+        "RecurrentRecurrent", SynapseMatrixType::SPARSE_INDIVIDUALG, NO_DELAY,
+        "Recurrent", "Recurrent",
+        epropParamVals, recurrentRecurrentInitVals,
+        {}, {},
+        initConnectivity<InitSparseConnectivitySnippet::FixedProbability>(fixedProb));
+#else
+    model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
+        "RecurrentRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
+        "Recurrent", "Recurrent",
+        epropParamVals, recurrentRecurrentInitVals,
+        {}, {});
+#endif
     
     model.addSynapsePopulation<OutputLearning, PostsynapticModels::DeltaCurr>(
         "RecurrentOutput", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,

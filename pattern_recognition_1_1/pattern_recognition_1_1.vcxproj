@@ -62,9 +62,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="simulator.cc" />
-    <CudaCompile Include="batch_learning.cc">
-      <AdditionalOptions Condition=" !$([System.String]::new('%(BaseCommandLineTemplate)').Contains('-x cu')) ">-x cu %(AdditionalOptions)</AdditionalOptions>
-    </CudaCompile>
+    <CudaCompile Include="batch_learning.cc"/>
+    <CudaCompile Include="deep_r.cc"/>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
