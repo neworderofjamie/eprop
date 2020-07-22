@@ -1,6 +1,7 @@
 #include "pattern_recognition_1_1_CODE/definitions.h"
 
 #include <iostream>
+#include <random>
 
 // GeNN userproject includes
 #include "analogueRecorder.h"
@@ -16,6 +17,8 @@ int main()
 {
     try 
     {
+        std::mt19937 rng;
+        
         allocateMem();
         initialize();
         
@@ -87,9 +90,18 @@ int main()
                     inputRecurrentTimer.stop();
                     recurrentRecurrentTimer.start();
                 }
-                BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
-                                                 Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
-                                                 trial, learningRate);
+                if(Parameters::recurrentConnectivity < 1.0) {
+                    BatchLearning::adamOptimizerDeepRCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, 
+                                                          d_gRecurrentRecurrent, d_eFilteredRecurrentRecurrent,
+                                                          rowLengthRecurrentRecurrent, d_rowLengthRecurrentRecurrent, d_indRecurrentRecurrent, 
+                                                          Parameters::numRecurrentNeurons, maxRowLengthRecurrentRecurrent, 
+                                                          trial, rng, learningRate);
+                }
+                else {
+                    BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
+                                                     Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
+                                                     trial, learningRate);
+                }
                 if(Parameters::timingEnabled) {
                     recurrentRecurrentTimer.stop();
                     recurrentOutputTimer.start();

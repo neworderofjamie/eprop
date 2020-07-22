@@ -1,5 +1,9 @@
 #include "batch_learning.h"
 
+// Standard C++ includes
+#include <iostream>
+#include <numeric>
+
 // CUDA includes
 #include <curand_kernel.h>
 
@@ -15,6 +19,8 @@ constexpr size_t TILE_DIM = 32;
 // How 'high' are thread blocks
 constexpr size_t BLOCK_HEIGHT = 8;
 
+__device__ unsigned int g_NumDormantConnections;
+
 class NOP
 {
 public:
@@ -29,9 +35,9 @@ public:
 };
 
 //----------------------------------------------------------------------------
-// Simple 'operation' to use with transpose and update  
-// kernels to perform learning with a fixed rate
+// FixedLearningRate
 //----------------------------------------------------------------------------
+//! Simple 'operation' to use with transpose and update kernels to perform learning with a fixed rate
 class FixedLearningRate
 {
 public:
@@ -61,8 +67,9 @@ private:
 };
 
 //----------------------------------------------------------------------------
-// Simple 'operation' to apply Adam optimizer to parameter in transpose and update kernels
+// AdamOptimizer
 //----------------------------------------------------------------------------
+//! Simple 'operation' to apply Adam optimizer to parameter in transpose and update kernels
 class AdamOptimizer
 {
 public:
@@ -177,6 +184,7 @@ template<typename Operation>
 __global__ void updateKernel(float *d_G, unsigned int numSynapses, Operation operation)
 {
     const unsigned int idx = (blockIdx.x * 32) + threadIdx.x;
+
     if(idx < numSynapses) {
         // Update parameter - if it's changed update global memory
         float gIn = d_G[idx];
@@ -186,15 +194,30 @@ __global__ void updateKernel(float *d_G, unsigned int numSynapses, Operation ope
     }
 }
 
+__global__ void buildDeepRBitmaskKernel(uint32_t *d_Bitmask, const unsigned int *d_RowLength,
+                                        unsigned int numRows, unsigned int maxRowLength)
+{
+    const unsigned int idPre = (blockIdx.x * 32) + threadIdx.x;
+}
+
 template<typename Operation>
 __global__ void deepRFirstPassKernel(float *d_G, float *d_EFiltered, unsigned int *d_RowLength, unsigned int *d_Ind, 
                                      unsigned int numRows, unsigned int maxRowLength, 
                                      Operation operation)
 {
-    // If there's a row for this thread to process
     const unsigned int idPre = (blockIdx.x * 32) + threadIdx.x;
+    
+    // Use first thread in block to zero shared memory dormant counter
+     __shared__ unsigned int shNumDormant;
+    if(threadIdx.x == 0) {
+        shNumDormant = 0;
+    }
+    __syncthreads();
+    
+    // If there's a row for this thread to process
     if(idPre < numRows) {
         // Loop through synapses
+        unsigned int numDormant = 0;
         unsigned int rowLength = d_RowLength[idPre];
         const unsigned int rowStartIdx = idPre * maxRowLength;
         for(unsigned int j = 0; j < rowLength; j++) {
@@ -217,6 +240,7 @@ __global__ void deepRFirstPassKernel(float *d_G, float *d_EFiltered, unsigned in
                     const unsigned int rowLastIdx = rowStartIdx + rowLength - 1;
                     
                     // Overwrite this synapse with one at end of row
+                    d_Ind[idx] = d_Ind[rowLastIdx];
                     d_G[idx] = d_G[rowLastIdx];
                     d_EFiltered[idx] = d_EFiltered[rowLastIdx];
                     
@@ -225,12 +249,26 @@ __global__ void deepRFirstPassKernel(float *d_G, float *d_EFiltered, unsigned in
                     
                     // Decrement row length
                     rowLength--;
+                    
+                    // Increment row's dormant counter
+                    numDormant++;
                 }
             }
         }
         
         // Write back updated row length
         d_RowLength[idPre] = rowLength;
+        
+        // Update shared memory dormant synapse count
+        if(numDormant > 0) {
+            atomicAdd(&shNumDormant, numDormant);
+        }
+    }
+    
+    // Use first thread in block to atomic add shared memory counter to global total
+    __syncthreads();
+    if(threadIdx.x == 0 && shNumDormant > 0) {
+        atomicAdd(&g_NumDormantConnections, shNumDormant);
     }
 }
 }   // Anonymous namespace
@@ -295,11 +333,62 @@ void adamOptimizerCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
     CHECK_CUDA_ERRORS(cudaPeekAtLastError());
 }
 
-void adamOptimizerDeepRCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
-                            unsigned int *d_RowLength, unsigned int *d_Ind, 
-                            unsigned int numRows, unsigned int numCols, unsigned int maxRowLength, unsigned int t, 
-                            float alpha , float beta1, float beta2, float epsilon)
+void adamOptimizerDeepRCUDA(float *d_DeltaG, float *d_M, float *d_V, 
+                            float *d_G, float *d_EFiltered,
+                            unsigned int *rowLength, unsigned int *d_RowLength, unsigned int *d_Ind, 
+                            unsigned int numRows, unsigned int maxRowLength, unsigned int t, 
+                            std::mt19937 &rng, float alpha, float beta1, float beta2, float epsilon)
 {
+    // Calculate number of blocks required to process matrix
+    const unsigned int numBlocks = (numRows + 31) / 32;
+    
+    AdamOptimizer adam(d_DeltaG, d_M, d_V, t, alpha, beta1, beta2, epsilon);
+    
+    // Zero device dormant count
+    unsigned int numDormant = 0;
+    CHECK_CUDA_ERRORS(cudaMemcpyToSymbol(g_NumDormantConnections, &numDormant, sizeof(unsigned int)));
+    
+    // Launch kernel to perform first Deep-R pass
+    const dim3 threads(32, 1);
+    const dim3 grid(numBlocks, 1);
+    deepRFirstPassKernel<<<grid, threads>>>(d_G, d_EFiltered, d_RowLength, d_Ind, 
+                                            numRows, maxRowLength, adam);
+    
+    // Copy device dormant count back to host
+    CHECK_CUDA_ERRORS(cudaMemcpyFromSymbol(&numDormant, g_NumDormantConnections, sizeof(unsigned int)));
+    std::cout << numDormant << " synapses made dormant" << std::endl;
+    
+    // Copy row lengths back to host
+    CHECK_CUDA_ERRORS(cudaMemcpy(rowLength, d_RowLength, numRows * sizeof(unsigned int), cudaMemcpyDeviceToHost));
+    
+    // Count number of synapses
+    const size_t numSynapses = std::accumulate(&rowLength[0], &rowLength[numRows], 0u);
+    
+    // From this, calculate how many padding synapses there are in data structure
+    size_t numTotalPaddingSynapses = (maxRowLength * numRows) - numSynapses;
+    std::cout << numTotalPaddingSynapses << " empty synapses" << std::endl;
+    
+    // Loop through rows of synaptic matrix
+    for(unsigned int i = 0; i < (numRows - 1); i++) {
+        const unsigned int numRowPaddingSynapses = maxRowLength - rowLength[i];
+        const double probability = (double)numRowPaddingSynapses / (double)numTotalPaddingSynapses;
+
+        // Create distribution to sample number of activations
+        std::binomial_distribution<size_t> numActivationDist(numDormant, probability);
+
+        // Sample number of activations
+        const size_t numActivations = numActivationDist(rng);
+        
+        std::cout << "\t" << numActivations << std::endl;
+        
+        // Update counters
+        numDormant -= numActivations;
+        numTotalPaddingSynapses -= numRowPaddingSynapses;
+    }
+    assert(numDormant < maxRowLength - rowLength[numRows - 1]);
+    std::cout << "\t" << numDormant << std::endl;
+    
+    //CHECK_CUDA_ERRORS(cudaPeekAtLastError());
     
 }
 

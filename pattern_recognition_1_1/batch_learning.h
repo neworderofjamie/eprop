@@ -1,5 +1,8 @@
 #pragma once
 
+// Standard C++ includes
+#include <random>
+
 //----------------------------------------------------------------------------
 // BatchLearning
 //----------------------------------------------------------------------------
@@ -25,11 +28,12 @@ void adamOptimizerCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
                        float alpha = 0.001, float beta1 = 0.9, float beta2 = 0.999, 
                        float epsilon = 1E-8);
 
-void adamOptimizerDeepRCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G,
-                            unsigned int *d_RowLength, unsigned int *d_Ind, 
-                            unsigned int numRows, unsigned int numCols, unsigned int maxRowLength, unsigned int t, 
-                            float alpha = 0.001, float beta1 = 0.9, float beta2 = 0.999, 
-                            float epsilon = 1E-8);
+void adamOptimizerDeepRCUDA(float *d_DeltaG, float *d_M, float *d_V, 
+                            float *d_G, float *d_EFiltered,
+                            unsigned int *rowLength, unsigned int *d_RowLength, unsigned int *d_Ind, 
+                            unsigned int numRows, unsigned int maxRowLength, unsigned int t, 
+                            std::mt19937 &rng, float alpha = 0.001, float beta1 = 0.9, 
+                            float beta2 = 0.999, float epsilon = 1E-8);
                             
 //! Apply Adam optimizer to dense weights and then transfer to transpose
 void adamOptimizerTransposeCUDA(float *d_DeltaGIn, float *d_MIn, float *d_VIn, float *d_GIn, 
