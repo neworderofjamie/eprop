@@ -30,6 +30,11 @@ public:
         m_Gradients[dstIdx] = m_Gradients[srcIdx];
     }
     
+    __forceinline__ __device__ void initSynapse(unsigned int idx)
+    {
+        m_Gradients[idx] = 0.0f;
+    }
+    
 private:
     float *m_Gradients;
     const float m_LearningRate;
@@ -79,6 +84,13 @@ public:
         m_Gradients[dstIdx] = m_Gradients[srcIdx];
         m_M[dstIdx] = m_M[srcIdx];
         m_V[dstIdx] = m_M[dstIdx];
+    }
+    
+    __forceinline__ __device__ void initSynapse(unsigned int idx)
+    {
+        m_Gradients[idx] = 0.0f;
+        m_M[idx] = 0.0f;
+        m_V[idx] = 0.0f;
     }
     
 private:
