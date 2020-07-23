@@ -3,6 +3,9 @@
 // Standard C++ includes
 #include <random>
 
+// eProp includes
+#include "cuda_timer.h"
+
 // Forward declarations
 typedef struct curandStateXORWOW curandState;
 
@@ -18,9 +21,25 @@ public:
           float beta1 = 0.9, float beta2 = 0.999, float epsilon = 1E-8, unsigned int seed = 0);
     ~DeepR();
     
+    //------------------------------------------------------------------------
+    // Public API
+    //------------------------------------------------------------------------
     void update(unsigned int t, float alpha = 0.001);
     
+    void updateTimers()
+    {
+        m_FirstPassKernelTimer.update();
+        m_SecondPassKernelTimer.update();
+    }
+    
+    float getFirstPassKernelTime() const{ return m_FirstPassKernelTimer.getTotalTime(); }
+    float getSecondPassKernelTime() const{ return m_SecondPassKernelTimer.getTotalTime(); }
+    double getHostUpdateTime() const{ return m_HostUpdateTime; }
+
 private:
+    //------------------------------------------------------------------------
+    // Members
+    //------------------------------------------------------------------------
     // Dimensions of matrix
     const unsigned int m_NumRows;
     const unsigned int m_NumCols;
@@ -63,4 +82,9 @@ private:
     
     // RNG for distributing reactivations
     std::mt19937 m_RNG;
+    
+    // CUDA timers for two kernels
+    CUDATimer m_FirstPassKernelTimer;
+    CUDATimer m_SecondPassKernelTimer;
+    double m_HostUpdateTime;
 };

@@ -7,6 +7,9 @@
 // CUDA includes
 #include <curand_kernel.h>
 
+// GeNN userproject includes
+#include "timer.h"
+
 // Auto-generated model code
 #include "pattern_recognition_1_1_CODE/definitionsInternal.h"
 
@@ -190,7 +193,7 @@ DeepR::DeepR(unsigned int numRows, unsigned int numCols, unsigned int maxRowLeng
 :   m_NumRows(numRows), m_NumCols(numCols), m_MaxRowLength(maxRowLength),
     m_BitmaskRowWords((m_NumCols  + 31) / 32), m_RowLength(rowLength), md_RowLength(d_rowLength), md_Ind(d_ind),
     md_DeltaG(d_DeltaG), md_M(d_M), md_V(d_V), md_G(d_G), md_EFiltered(d_EFiltered),
-    m_Beta1(beta1), m_Beta2(beta2), m_Epsilon(epsilon)
+    m_Beta1(beta1), m_Beta2(beta2), m_Epsilon(epsilon), m_HostUpdateTime(0.0)
 {
     // Allocate additional arrays to hold number of activation
     CHECK_CUDA_ERRORS(cudaMalloc(&md_NumActivations, m_NumRows * sizeof(unsigned int)));
@@ -261,6 +264,9 @@ DeepR::~DeepR()
 //----------------------------------------------------------------------------
 void DeepR::update(unsigned int t, float alpha)
 {
+    // Time function
+    TimerAccumulate b(m_HostUpdateTime);
+    
     // Calculate number of blocks required to process matrix
     const unsigned int numBlocks = (m_NumRows + 31) / 32;
     
@@ -272,12 +278,16 @@ void DeepR::update(unsigned int t, float alpha)
     unsigned int numDormant = 0;
     CHECK_CUDA_ERRORS(cudaMemcpy(md_NumDormantConnections, &numDormant, sizeof(unsigned int), cudaMemcpyHostToDevice));
     
+    
+    
     // Launch kernel to perform first Deep-R pass
     const dim3 threads(32, 1);
     const dim3 grid(numBlocks, 1);
+    m_FirstPassKernelTimer.start();
     deepRFirstPassKernel<<<grid, threads>>>(md_G, md_EFiltered, md_NumDormantConnections, 
                                             md_RowLength, md_Ind, md_Bitmask,
                                             m_NumRows, m_MaxRowLength, m_BitmaskRowWords, adam);
+    m_FirstPassKernelTimer.stop();
     
     // Copy device dormant count back to host
     CHECK_CUDA_ERRORS(cudaMemcpy(&numDormant, md_NumDormantConnections, sizeof(unsigned int), cudaMemcpyDeviceToHost));
@@ -316,10 +326,10 @@ void DeepR::update(unsigned int t, float alpha)
     CHECK_CUDA_ERRORS(cudaMemcpy(md_NumActivations, m_NumActivations, m_NumRows * sizeof(unsigned int), cudaMemcpyHostToDevice));
     
     // Launch kernel to perform second Deep-R pass
+    m_SecondPassKernelTimer.start();
     deepRSecondPassKernel<<<grid, threads>>>(md_G, md_EFiltered, md_RowLength, md_Ind, 
                                              m_NumRows, m_NumCols, m_MaxRowLength, m_BitmaskRowWords,
                                              md_Bitmask, md_NumActivations, md_RNG, adam);
-    
+    m_SecondPassKernelTimer.stop();
     CHECK_CUDA_ERRORS(cudaPeekAtLastError());
-
 }
