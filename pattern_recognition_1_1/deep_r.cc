@@ -307,19 +307,19 @@ void DeepR::update(unsigned int t, float alpha)
         const double probability = (double)numRowPaddingSynapses / (double)numTotalPaddingSynapses;
 
         // Create distribution to sample number of activations
-        std::binomial_distribution<size_t> numActivationDist(numDormant, probability);
+        std::binomial_distribution<unsigned int> numActivationDist(numDormant, probability);
 
         // Sample number of activations
-        const unsigned int numActivations = numActivationDist(m_RNG);
+        const unsigned int numActivations = std::min(numRowPaddingSynapses, numActivationDist(m_RNG));
         m_NumActivations[i] = numActivations;
-   
+
         // Update counters
         numDormant -= numActivations;
         numTotalPaddingSynapses -= numRowPaddingSynapses;
     }
     
     // Put remainder of activations in last row
-    assert(numDormant < m_MaxRowLength - m_RowLength[m_NumRows - 1]);
+    assert(numDormant < (m_MaxRowLength - m_RowLength[m_NumRows - 1]));
     m_NumActivations[m_NumRows - 1] = numDormant;
     
     // Copy number of activations to device
