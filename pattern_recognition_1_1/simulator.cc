@@ -100,7 +100,7 @@ int main()
                     recurrentRecurrentTimer.start();
                 }
 #ifdef USE_DEEP_R
-                recurrentRecurrentdeepR.update(trial);
+                recurrentRecurrentdeepR.update(trial, learningRate);
 #else
                 BatchLearning::adamOptimizerCUDA(d_DeltaGRecurrentRecurrent, d_MRecurrentRecurrent, d_VRecurrentRecurrent, d_gRecurrentRecurrent, 
                                                  Parameters::numRecurrentNeurons, Parameters::numRecurrentNeurons, 
