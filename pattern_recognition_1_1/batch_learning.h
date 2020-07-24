@@ -9,6 +9,7 @@ namespace BatchLearning
 void transposeCUDA(float *d_in, float *d_out, 
                    unsigned int numInRows, unsigned int numInCols);
 
+
 //! Apply fixed rate learning to dense weights
 void fixedRateLearningCUDA(float *d_DeltaG, float *d_G, 
                            unsigned int numRows, unsigned int numCols, 
@@ -18,7 +19,7 @@ void fixedRateLearningCUDA(float *d_DeltaG, float *d_G,
 void fixedRateLearningTransposeCUDA(float *d_DeltaGIn, float *d_GIn, float *d_GOut, 
                                     unsigned int numInRows, unsigned int numInCols, 
                                     float learningRate);
-                                    
+
 //! Apply Adam optimizer to dense weights
 void adamOptimizerCUDA(float *d_DeltaG, float *d_M, float *d_V, float *d_G, 
                        unsigned int numRows, unsigned int numCols, unsigned int t, 

@@ -19,16 +19,15 @@ int main()
     try 
     {
         std::mt19937 rng;
-        
-        
+
         allocateMem();
-        
+
         initialize();
-        
+
         // Use CUDA to calculate initial transpose of feedforward recurrent->output weights
         BatchLearning::transposeCUDA(d_gRecurrentOutput, d_gOutputRecurrent, 
                                      Parameters::numRecurrentNeurons, Parameters::numOutputNeurons);
-        
+
         initializeSparse();
 
 #ifdef USE_DEEP_R
@@ -47,10 +46,10 @@ int main()
             }
             std::cout << std::endl;
         }*/
-        
+
         SpikeRecorder<SpikeWriterTextCached> inputSpikeRecorder(&getInputCurrentSpikes, &getInputCurrentSpikeCount, "input_spikes.csv", ",", true);
         SpikeRecorder<SpikeWriterTextCached> recurrentSpikeRecorder(&getRecurrentCurrentSpikes, &getRecurrentCurrentSpikeCount, "recurrent_spikes.csv", ",", true);
-        
+
         AnalogueRecorder<float> outputRecorder("output.csv", {YOutput, YStarOutput}, Parameters::numOutputNeurons, ",");
 
         CUDATimer inputRecurrentTimer;
@@ -58,11 +57,11 @@ int main()
         CUDATimer recurrentRecurrentTimer;
 #endif
         CUDATimer recurrentOutputTimer;
-        
+
         float learningRate = 0.003f;
         {
             Timer a("Simulation wall clock:");
-            
+
             // Loop through trials
             for(unsigned int trial = 0; trial <= 1000; trial++) {
                 if((trial % 100) == 0) {
@@ -76,14 +75,14 @@ int main()
                 // Loop through timesteps within trial
                 for(unsigned int i = 0; i < 1000; i++) {
                     stepTime();
-                    
+
                     if((trial % 100) == 0) {
                         // Download state
                         pullInputCurrentSpikesFromDevice();
                         pullRecurrentCurrentSpikesFromDevice();
                         pullYOutputFromDevice();
                         pullYStarOutputFromDevice();
-                        
+
                         // Record
                         inputSpikeRecorder.record(t);
                         recurrentSpikeRecorder.record(t);
@@ -121,10 +120,10 @@ int main()
                                                           trial, learningRate);
                 if(Parameters::timingEnabled) {
                     recurrentOutputTimer.stop();
-                    
+
                     // Wait for last timer to complete
                     recurrentOutputTimer.synchronize();
-                    
+
                     // Update counters
                     inputRecurrentTimer.update();
 #ifdef USE_DEEP_R
@@ -144,7 +143,7 @@ int main()
             std::cout << "\tNeuron update:" << neuronUpdateTime << std::endl;
             std::cout << "\tPresynaptic update:" << presynapticUpdateTime << std::endl;
             std::cout << "\tSynapse dynamics:" << synapseDynamicsTime << std::endl;
-            
+
             std::cout << "Batch learning:" << std::endl;
             std::cout << "\tInput->recurrent learning:" << inputRecurrentTimer.getTotalTime() << std::endl;
 #ifdef USE_DEEP_R

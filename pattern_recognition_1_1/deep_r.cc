@@ -266,20 +266,18 @@ void DeepR::update(unsigned int t, float alpha)
 {
     // Time function
     TimerAccumulate b(m_HostUpdateTime);
-    
+
     // Calculate number of blocks required to process matrix
     const unsigned int numBlocks = (m_NumRows + 31) / 32;
-    
+
     // Create optimizer
     // **TODO** template
     AdamOptimizer adam(md_DeltaG, md_M, md_V, t, alpha, m_Beta1, m_Beta2, m_Epsilon);
-    
+
     // Zero device dormant count
     unsigned int numDormant = 0;
     CHECK_CUDA_ERRORS(cudaMemcpy(md_NumDormantConnections, &numDormant, sizeof(unsigned int), cudaMemcpyHostToDevice));
-    
-    
-    
+
     // Launch kernel to perform first Deep-R pass
     const dim3 threads(32, 1);
     const dim3 grid(numBlocks, 1);
@@ -317,14 +315,14 @@ void DeepR::update(unsigned int t, float alpha)
         numDormant -= numActivations;
         numTotalPaddingSynapses -= numRowPaddingSynapses;
     }
-    
+
     // Put remainder of activations in last row
     assert(numDormant < (m_MaxRowLength - m_RowLength[m_NumRows - 1]));
     m_NumActivations[m_NumRows - 1] = numDormant;
-    
+
     // Copy number of activations to device
     CHECK_CUDA_ERRORS(cudaMemcpy(md_NumActivations, m_NumActivations, m_NumRows * sizeof(unsigned int), cudaMemcpyHostToDevice));
-    
+
     // Launch kernel to perform second Deep-R pass
     m_SecondPassKernelTimer.start();
     deepRSecondPassKernel<<<grid, threads>>>(md_G, md_EFiltered, md_RowLength, md_Ind, 
