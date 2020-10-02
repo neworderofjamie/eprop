@@ -10,43 +10,32 @@ constexpr double PI = 3.14159265358979323846264338327950288419;
 class Recurrent : public NeuronModels::Base
 {
 public:
-    DECLARE_MODEL(Recurrent, 4, 6);
+    DECLARE_MODEL(Recurrent, 3, 3);
+
+    SET_PARAM_NAMES({
+        "TauM",         // Membrane time constant [ms]
+        "Vthresh",      // Spiking threshold [mV]
+        "TauRefrac"});  // Refractory time constant [ms]
+
+    SET_VARS({{"V", "scalar"}, {"RefracTime", "scalar"}, {"E", "scalar"}});
+
+    SET_DERIVED_PARAMS({
+        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
+
+    SET_ADDITIONAL_INPUT_VARS({{"IsynFeedback", "scalar", 0.0}});
 
     SET_SIM_CODE(
         "$(E) = $(IsynFeedback);\n"
         "$(V) = ($(Alpha) * $(V)) + $(Isyn);\n"
-        "$(ZFilter) *= $(Alpha);\n"
-        "$(FAvg) *= $(AlphaFAv);\n"
         "if ($(RefracTime) > 0.0) {\n"
         "  $(RefracTime) -= DT;\n"
-        "  $(Psi) = 0.0;\n"
-        "}\n"
-        "else {\n"
-        "  $(Psi) = (1.0 / $(Vthresh)) * 0.3 * fmax(0.0, 1.0 - fabs(($(V) - $(Vthresh)) / $(Vthresh)));\n"
         "}\n");
 
     SET_THRESHOLD_CONDITION_CODE("$(RefracTime) <= 0.0 && $(V) >= $(Vthresh)");
 
     SET_RESET_CODE(
         "$(RefracTime) = $(TauRefrac);\n"
-        "$(ZFilter) += 1.0f;\n"
-        "$(FAvg) += (1.0 - $(AlphaFAv));\n"
         "$(V) -= $(Vthresh);\n");
-
-    SET_PARAM_NAMES({
-        "TauM",         // Membrane time constant [ms]
-        "Vthresh",      // Spiking threshold [mV]
-        "TauRefrac",    // Refractory time constant [ms]
-        "TauFAvg"});    // Firing rate averaging time constant [ms]
-
-    SET_VARS({{"V", "scalar"}, {"Psi", "scalar"}, {"RefracTime", "scalar"}, 
-              {"ZFilter", "scalar"}, {"E", "scalar"}, {"FAvg", "scalar"}});
-
-    SET_DERIVED_PARAMS({
-        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
-        {"AlphaFAv", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[3]); }}});
-
-    SET_ADDITIONAL_INPUT_VARS({{"IsynFeedback", "scalar", 0.0}});
 
     SET_NEEDS_AUTO_REFRACTORY(false);
 };
@@ -58,14 +47,24 @@ IMPLEMENT_MODEL(Recurrent);
 class Input : public NeuronModels::Base
 {
 public:
-    DECLARE_MODEL(Input, 5, 2);
+    DECLARE_MODEL(Input, 4, 1);
+
+    SET_PARAM_NAMES({
+        "GroupSize",        // Number of neurons in each group
+        "ActiveInterval",   // How long each group is active for [ms]
+        "ActiveRate",       // Rate active neurons fire at [Hz]
+        "PatternLength"});  // Pattern length [ms]
+
+    SET_VARS({{"RefracTime", "scalar"}});
+
+    SET_DERIVED_PARAMS({
+        {"TauRefrac", [](const std::vector<double> &pars, double){ return 1000.0 / pars[3]; }}});
 
     SET_SIM_CODE(
         "const scalar tPattern = fmod($(t), $(PatternLength));\n"
         "const unsigned int neuronGroup = $(id) / (unsigned int)$(GroupSize);\n"
         "const scalar groupStartTime = neuronGroup * $(ActiveInterval);\n"
         "const scalar groupEndTime = groupStartTime + $(ActiveInterval);\n"
-        "$(ZFilter) *= $(Alpha);\n"
         "if ($(RefracTime) > 0.0) {\n"
         "  $(RefracTime) -= DT;\n"
         "}\n");
@@ -73,22 +72,7 @@ public:
     SET_THRESHOLD_CONDITION_CODE(
         "tPattern > groupStartTime && tPattern < groupEndTime && $(RefracTime) <= 0.0");
 
-    SET_RESET_CODE(
-        "$(RefracTime) = $(TauRefrac);\n"
-        "$(ZFilter) += 1.0;\n");
-
-    SET_PARAM_NAMES({
-        "TauIn",            // Membrane time constant [ms]
-        "GroupSize",        // Number of neurons in each group
-        "ActiveInterval",   // How long each group is active for [ms]
-        "ActiveRate",       // Rate active neurons fire at [Hz]
-        "PatternLength"});  // Pattern length [ms]
-        
-    SET_VARS({{"ZFilter", "scalar"}, {"RefracTime", "scalar"}});
-   
-    SET_DERIVED_PARAMS({
-        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
-        {"TauRefrac", [](const std::vector<double> &pars, double){ return 1000.0 / pars[3]; }}});
+    SET_RESET_CODE("$(RefracTime) = $(TauRefrac);\n");
 
     SET_NEEDS_AUTO_REFRACTORY(false);
 };
@@ -101,14 +85,6 @@ class OutputRegression : public NeuronModels::Base
 {
 public:
     DECLARE_MODEL(OutputRegression, 6, 9);
-
-    SET_SIM_CODE(
-        "$(Y) = ($(Kappa) * $(Y)) + $(Isyn) + $(Bias);\n"
-        "const scalar tPattern = fmod($(t), $(PatternLength));\n"
-        "$(YStar) = $(Ampl1) * sin(($(Freq1Radians) * tPattern) + $(Phase1));\n"
-        "$(YStar) += $(Ampl2) * sin(($(Freq2Radians) * tPattern) + $(Phase2));\n"
-        "$(YStar) += $(Ampl3) * sin(($(Freq3Radians) * tPattern) + $(Phase3));\n"
-        "$(E) = $(Y) - $(YStar);\n");
 
     SET_PARAM_NAMES({
         "TauOut",           // Membrane time constant [ms]
@@ -127,6 +103,14 @@ public:
         {"Freq1Radians", [](const std::vector<double> &pars, double){ return pars[2] * 2.0 * PI / 1000.0; }},
         {"Freq2Radians", [](const std::vector<double> &pars, double){ return pars[3] * 2.0 * PI / 1000.0; }},
         {"Freq3Radians", [](const std::vector<double> &pars, double){ return pars[4] * 2.0 * PI / 1000.0; }}});
+
+    SET_SIM_CODE(
+        "$(Y) = ($(Kappa) * $(Y)) + $(Isyn) + $(Bias);\n"
+        "const scalar tPattern = fmod($(t), $(PatternLength));\n"
+        "$(YStar) = $(Ampl1) * sin(($(Freq1Radians) * tPattern) + $(Phase1));\n"
+        "$(YStar) += $(Ampl2) * sin(($(Freq2Radians) * tPattern) + $(Phase2));\n"
+        "$(YStar) += $(Ampl3) * sin(($(Freq3Radians) * tPattern) + $(Phase3));\n"
+        "$(E) = $(Y) - $(YStar);\n");
 
     SET_NEEDS_AUTO_REFRACTORY(false);
 };
@@ -169,27 +153,45 @@ IMPLEMENT_MODEL(Continuous);
 class EProp : public WeightUpdateModels::Base
 {
 public:
-    DECLARE_MODEL(EProp, 3, 5);
+    DECLARE_WEIGHT_UPDATE_MODEL(EProp, 4, 5, 1, 2);
     
-    SET_SIM_CODE("$(addToInSyn, $(g));\n");
-
-    SET_SYNAPSE_DYNAMICS_CODE(
-        "const scalar e = $(ZFilter_pre) * $(Psi_post);\n"
-        "scalar eFiltered = $(eFiltered);\n"
-        "eFiltered = (eFiltered * $(Alpha)) + e;\n"
-        "$(DeltaG) += (eFiltered * $(E_post)) - (($(FTargetTimestep) - $(FAvg_post)) * $(CReg) * e);\n"
-        "$(eFiltered) = eFiltered;\n");
-
     SET_PARAM_NAMES({"TauE",        // Eligibility trace time constant [ms]
                      "CReg",        // Regularizer strength
-                     "FTarget"});   // Target spike rate [Hz]
+                     "FTarget",     // Target spike rate [Hz]
+                     "TauFAvg"});   // Firing rate averaging time constant [ms]
 
     SET_VARS({{"g", "scalar"}, {"eFiltered", "scalar"}, {"DeltaG", "scalar"},
               {"M", "scalar"}, {"V", "scalar"}});
 
+    SET_PRE_VARS({{"ZFilter", "scalar"}});
+    SET_POST_VARS({{"Psi", "scalar"}, {"FAvg", "scalar"}});
+
     SET_DERIVED_PARAMS({
         {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }},
-        {"FTargetTimestep", [](const std::vector<double> &pars, double dt){ return pars[2] / (1000.0 * dt); }}});
+        {"FTargetTimestep", [](const std::vector<double> &pars, double dt){ return pars[2] / (1000.0 * dt); }},
+        {"AlphaFAv", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[3]); }}});
+
+    SET_SIM_CODE("$(addToInSyn, $(g));\n");
+
+    SET_SYNAPSE_DYNAMICS_CODE(
+        "const scalar e = $(ZFilter) * $(Psi);\n"
+        "scalar eFiltered = $(eFiltered);\n"
+        "eFiltered = (eFiltered * $(Alpha)) + e;\n"
+        "$(DeltaG) += (eFiltered * $(E_post)) - (($(FTargetTimestep) - $(FAvg)) * $(CReg) * e);\n"
+        "$(eFiltered) = eFiltered;\n");
+
+    SET_PRE_SPIKE_CODE("$(ZFilter) += 1.0;\n");
+    SET_PRE_DYNAMICS_CODE("$(ZFilter) *= $(Alpha);\n");
+    
+    SET_POST_SPIKE_CODE("$(FAvg) += (1.0 - $(AlphaFAv));\n");
+    SET_POST_DYNAMICS_CODE(
+        "$(FAvg) *= $(AlphaFAv);\n"
+        "if ($(RefracTime_post) > 0.0) {\n"
+        "  $(Psi) = 0.0;\n"
+        "}\n"
+        "else {\n"
+        "  $(Psi) = (1.0 / $(Vthresh_post)) * 0.3 * fmax(0.0, 1.0 - fabs(($(V_post) - $(Vthresh_post)) / $(Vthresh_post)));\n"
+        "}\n");
 };
 IMPLEMENT_MODEL(EProp);
 
@@ -200,14 +202,24 @@ IMPLEMENT_MODEL(EProp);
 class OutputLearning : public WeightUpdateModels::Base
 {
 public:
-    DECLARE_MODEL(OutputLearning, 0, 4);
+    DECLARE_WEIGHT_UPDATE_MODEL(OutputLearning, 1, 4, 1, 0);
+
+    SET_PARAM_NAMES({"TauE"});  // Eligibility trace time constant [ms]
+
+    SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"},
+              {"M", "scalar"}, {"V", "scalar"}});
+
+    SET_PRE_VARS({{"ZFilter", "scalar"}});
+
+    SET_DERIVED_PARAMS({
+        {"Alpha", [](const std::vector<double> &pars, double dt){ return std::exp(-dt / pars[0]); }}});
 
     SET_SIM_CODE("$(addToInSyn, $(g));\n");
 
-    SET_SYNAPSE_DYNAMICS_CODE("$(DeltaG) += $(ZFilter_pre) * $(E_post);\n");
+    SET_SYNAPSE_DYNAMICS_CODE("$(DeltaG) += $(ZFilter) * $(E_post);\n");
 
-    SET_VARS({{"g", "scalar"}, {"DeltaG", "scalar"}, 
-              {"M", "scalar"}, {"V", "scalar"}});
+    SET_PRE_SPIKE_CODE("$(ZFilter) += 1.0;\n");
+    SET_PRE_DYNAMICS_CODE("$(ZFilter) *= $(Alpha);\n");
 };
 IMPLEMENT_MODEL(OutputLearning);
 
@@ -232,30 +244,24 @@ void modelDefinition(ModelSpec &model)
     //---------------------------------------------------------------------------
     // Input population
     Input::ParamValues inputParamVals(
-        20.0,       // Membrane time constant [ms]
         4,          // Number of neurons in each group
         200.0,      // How long each group is active for [ms]
         100.0,      // Rate active neurons fire at [Hz]
         1000.0);    // Pattern length [ms]
 
     Input::VarValues inputInitVals(
-        0.0,    // Trace
         0.0);   // Refrac time
 
     // Recurrent population
     Recurrent::ParamValues recurrentParamVals(
         20.0,   // Membrane time constant [ms]
         0.61,   // Spiking threshold [mV]
-        5.0,    // Refractory time constant [ms]
-        500.0); // Firing rate averaging time constant [ms]
+        5.0);   // Refractory time constant [ms]
 
     Recurrent::VarValues recurrentInitVals(
         0.0,    // V
-        0.0,    // Psi
         0.0,    // RefracTime
-        0.0,    // ZFilter
-        0.0,    // E
-        0.0);   // FAvg
+        0.0);   // E
 
     // Output population
     OutputRegression::ParamValues outputParamVals(
@@ -280,10 +286,18 @@ void modelDefinition(ModelSpec &model)
         initVar<InitVarSnippet::Uniform>(outputPhaseDist)); // Phase3
 
     EProp::ParamValues epropParamVals(
-        20.0,   // Eligibility trace time constant [ms]
-        3.0,   // Regularizer strength
-        10.0);  // Target spike rate [Hz]
+        20.0,       // Eligibility trace time constant [ms]
+        3.0,        // Regularizer strength
+        10.0,       // Target spike rate [Hz]
+        500.0);     // Firing rate averaging time constant [ms]
     
+    EProp::PreVarValues epropPreInitVals(
+        0.0);   // ZFilter
+
+    EProp::PostVarValues epropPostInitVals(
+        0.0,    // Psi
+        0.0);   // FAvg
+
     // Feedforward input->recurrent connections
     InitVarSnippet::Normal::ParamValues inputRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numInputNeurons));
     EProp::VarValues inputRecurrentInitVals(
@@ -292,7 +306,7 @@ void modelDefinition(ModelSpec &model)
         0.0,                                                        // DeltaG
         0.0,                                                        // M
         0.0);                                                       // V
-        
+
     // Recurrent connections
     InitVarSnippet::Normal::ParamValues recurrentRecurrentWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
     EProp::VarValues recurrentRecurrentInitVals(
@@ -303,6 +317,12 @@ void modelDefinition(ModelSpec &model)
         0.0);                                                           // V
 
     // Feedforward recurrent->output connections
+    OutputLearning::ParamValues recurrentOutputParamVals(
+        20.0);   // Eligibility trace time constant [ms]
+
+    OutputLearning::PreVarValues recurrentOutputPreInitVals(
+        0.0);   // ZFilter
+
     InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons * Parameters::deepRRecurrentConnectivity));
     OutputLearning::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
@@ -332,7 +352,7 @@ void modelDefinition(ModelSpec &model)
     model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
         "InputRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Input", "Recurrent",
-        epropParamVals, inputRecurrentInitVals,
+        epropParamVals, inputRecurrentInitVals, epropPreInitVals, epropPostInitVals,
         {}, {});
 
     model.addSynapsePopulation<Continuous, Feedback>(
@@ -346,20 +366,20 @@ void modelDefinition(ModelSpec &model)
     model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
         "RecurrentRecurrent", SynapseMatrixType::SPARSE_INDIVIDUALG, NO_DELAY,
         "Recurrent", "Recurrent",
-        epropParamVals, recurrentRecurrentInitVals,
+        epropParamVals, recurrentRecurrentInitVals, epropPreInitVals, epropPostInitVals,
         {}, {},
         initConnectivity<InitSparseConnectivitySnippet::FixedProbability>(fixedProb));
 #else
     model.addSynapsePopulation<EProp, PostsynapticModels::DeltaCurr>(
         "RecurrentRecurrent", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Recurrent", "Recurrent",
-        epropParamVals, recurrentRecurrentInitVals,
+        epropParamVals, recurrentRecurrentInitVals, epropPreInitVals, epropPostInitVals,
         {}, {});
 #endif
     
     model.addSynapsePopulation<OutputLearning, PostsynapticModels::DeltaCurr>(
         "RecurrentOutput", SynapseMatrixType::DENSE_INDIVIDUALG, NO_DELAY,
         "Recurrent", "Output",
-        {}, recurrentOutputInitVals,
+        recurrentOutputParamVals, recurrentOutputInitVals, recurrentOutputPreInitVals, {},
         {}, {});
 }
