@@ -303,7 +303,11 @@ void modelDefinition(ModelSpec &model)
         0.0);                                                           // V
 
     // Feedforward recurrent->output connections
+#ifdef USE_DEEP_R
     InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons * Parameters::deepRRecurrentConnectivity));
+#else
+    InitVarSnippet::Normal::ParamValues recurrentOutputWeightDist(0.0, weight0 / sqrt(Parameters::numRecurrentNeurons));
+#endif
     OutputLearning::VarValues recurrentOutputInitVals(
         initVar<InitVarSnippet::Normal>(recurrentOutputWeightDist), // g
         0.0,                                                        // DeltaG
